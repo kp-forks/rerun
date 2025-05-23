@@ -205,7 +205,7 @@ impl DepthImage {
     #[inline]
     pub fn descriptor_indicator() -> ComponentDescriptor {
         ComponentDescriptor {
-            archetype_name: Some("rerun.archetypes.DepthImage".into()),
+            archetype_name: None,
             component_name: "rerun.components.DepthImageIndicator".into(),
             archetype_field_name: None,
         }
@@ -272,7 +272,9 @@ impl ::re_types_core::Archetype for DepthImage {
     #[inline]
     fn indicator() -> SerializedComponentBatch {
         #[allow(clippy::unwrap_used)]
-        DepthImageIndicator::DEFAULT.serialized().unwrap()
+        DepthImageIndicator::DEFAULT
+            .serialized(Self::descriptor_indicator())
+            .unwrap()
     }
 
     #[inline]

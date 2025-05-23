@@ -193,7 +193,7 @@ impl VideoFrameReference {
     #[inline]
     pub fn descriptor_indicator() -> ComponentDescriptor {
         ComponentDescriptor {
-            archetype_name: Some("rerun.archetypes.VideoFrameReference".into()),
+            archetype_name: None,
             component_name: "rerun.components.VideoFrameReferenceIndicator".into(),
             archetype_field_name: None,
         }
@@ -249,7 +249,9 @@ impl ::re_types_core::Archetype for VideoFrameReference {
     #[inline]
     fn indicator() -> SerializedComponentBatch {
         #[allow(clippy::unwrap_used)]
-        VideoFrameReferenceIndicator::DEFAULT.serialized().unwrap()
+        VideoFrameReferenceIndicator::DEFAULT
+            .serialized(Self::descriptor_indicator())
+            .unwrap()
     }
 
     #[inline]

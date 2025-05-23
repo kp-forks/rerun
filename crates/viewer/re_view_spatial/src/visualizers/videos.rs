@@ -34,6 +34,8 @@ use super::{
     entity_iterator::process_archetype,
 };
 
+// TODO(#9832): Support opacity for videos
+// TODO(jan): Fallback opacity in the same way as color/depth/segmentation images
 pub struct VideoFrameReferenceVisualizer {
     pub data: SpatialViewVisualizerData,
 }
@@ -164,7 +166,7 @@ impl VideoFrameReferenceVisualizer {
 
         let world_from_entity = spatial_ctx
             .transform_info
-            .single_entity_transform_required(ctx.target_entity_path, Self::identifier().as_str());
+            .single_entity_transform_required(ctx.target_entity_path, VideoFrameReference::name());
 
         // Note that we may or may not know the video size independently of error occurrence.
         // (if it's just a decoding error we may still know the size from the container!)
@@ -289,23 +291,34 @@ impl VideoFrameReferenceVisualizer {
         entity_path: &EntityPath,
     ) {
         let render_ctx = ctx.viewer_ctx.render_ctx();
+
+        let video_error_image = match re_ui::icons::VIDEO_ERROR
+            .load_image(ctx.viewer_ctx.egui_ctx(), egui::SizeHint::default())
+        {
+            Err(err) => {
+                re_log::error_once!("Failed to load video error icon: {err}");
+                return;
+            }
+            Ok(egui::load::ImagePoll::Ready { image }) => image,
+            Ok(egui::load::ImagePoll::Pending { .. }) => {
+                return; // wait for it to load
+            }
+        };
+
         let video_error_texture_result = render_ctx
             .texture_manager_2d
             .get_or_try_create_with::<image::ImageError>(
                 Hash64::hash("video_error").hash64(),
                 render_ctx,
                 || {
-                    let mut reader = image::ImageReader::new(std::io::Cursor::new(
-                        re_ui::icons::VIDEO_ERROR.png_bytes,
-                    ));
-                    reader.set_format(image::ImageFormat::Png);
-                    let dynamic_image = reader.decode()?;
-
                     Ok(ImageDataDesc {
                         label: "video_error".into(),
-                        data: std::borrow::Cow::Owned(dynamic_image.to_rgba8().to_vec()),
+                        data: std::borrow::Cow::Owned(video_error_image.as_raw().to_vec()),
                         format: re_renderer::external::wgpu::TextureFormat::Rgba8UnormSrgb.into(),
-                        width_height: [dynamic_image.width(), dynamic_image.height()],
+                        width_height: [
+                            video_error_image.width() as _,
+                            video_error_image.height() as _,
+                        ],
                     })
                 },
             );
@@ -400,8 +413,9 @@ fn latest_at_query_video_from_datastore(
     );
 
     let blob_row_id = results.component_row_id(&AssetVideo::descriptor_blob())?;
-    let blob = results.component_instance::<Blob>(0)?;
-    let media_type = results.component_instance::<MediaType>(0);
+    let blob = results.component_instance::<Blob>(0, &AssetVideo::descriptor_blob())?;
+    let media_type =
+        results.component_instance::<MediaType>(0, &AssetVideo::descriptor_media_type());
 
     let video = ctx.store_context.caches.entry(|c: &mut VideoCache| {
         let debug_name = entity_path.to_string();
