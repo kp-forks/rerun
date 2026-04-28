@@ -9,7 +9,7 @@ use crossbeam::channel::Sender;
 use re_chunk::RowId;
 use re_lenses::Lenses;
 use re_log_types::{SetStoreInfo, StoreId, StoreInfo};
-use re_mcap::{DecoderIdentifier, DecoderRegistry, SelectedDecoders};
+use re_mcap::{DecoderIdentifier, DecoderRegistry, SelectedDecoders, TopicFilter};
 use re_quota_channel::send_crossbeam;
 
 use crate::{ImportedData, Importer, ImporterError, ImporterSettings, URDF_DECODER_IDENTIFIER};
@@ -33,6 +33,7 @@ pub struct McapImporter {
     selected_decoders: SelectedDecoders,
     // TODO(RR-3491): We don't need the fallback logic anymore; use `OutputMode` instead.
     raw_fallback_enabled: bool,
+    topic_filter: TopicFilter,
     lenses_by_time_type: HashMap<re_log_types::TimeType, Arc<Lenses>>,
 }
 
@@ -58,6 +59,7 @@ impl McapImporter {
         Self {
             selected_decoders: selected_decoders.clone(),
             raw_fallback_enabled: true,
+            topic_filter: TopicFilter::default(),
             lenses_by_time_type,
         }
     }
@@ -65,6 +67,14 @@ impl McapImporter {
     /// Configures whether the raw decoder is used as a fallback for unsupported channels.
     pub fn with_raw_fallback(mut self, raw_fallback_enabled: bool) -> Self {
         self.raw_fallback_enabled = raw_fallback_enabled;
+        self
+    }
+
+    /// Configures a regex-based topic filter.
+    ///
+    /// See [`TopicFilter`] for matching semantics.
+    pub fn with_topic_filter(mut self, topic_filter: TopicFilter) -> Self {
+        self.topic_filter = topic_filter;
         self
     }
 
@@ -134,7 +144,7 @@ impl McapImporter {
 
         DecoderRegistry::all_builtin(self.raw_fallback_enabled)
             .select(&self.selected_decoders)
-            .plan(mcap, &summary)?
+            .plan(mcap, &summary, &self.topic_filter)?
             .run(mcap, &summary, timeline_type, &mut on_chunk_with_transforms)?;
 
         if self
@@ -143,6 +153,7 @@ impl McapImporter {
             && let Err(err) = super::robot_description::extract_urdf_from_robot_descriptions(
                 mcap,
                 &summary,
+                &self.topic_filter,
                 &mut on_chunk_with_transforms,
             )
         {

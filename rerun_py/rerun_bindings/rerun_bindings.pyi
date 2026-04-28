@@ -1515,6 +1515,8 @@ class McapReaderInternal:
         timeline_type: str,
         timestamp_offset_ns: int | None,
         decoders: list[str] | None,
+        include_topic_regex: list[str] | None,
+        exclude_topic_regex: list[str] | None,
     ) -> None: ...
     def stream(self) -> LazyChunkStreamInternal: ...
     @property

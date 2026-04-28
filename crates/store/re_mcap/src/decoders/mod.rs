@@ -64,12 +64,18 @@ pub trait Decoder {
     /// The processing that needs to happen for this decoder.
     ///
     /// This function has access to the entire MCAP file via `mcap_bytes`.
+    ///
+    /// `topic_filter` is provided so per-channel decoders can skip channels
+    /// the user has filtered out. File-level decoders (those that don't iterate
+    /// channels) may ignore it.
+    // TODO(michael): consider introducing a `DecoderContext` for holding the processing context.
     // TODO(#10862): Consider abstracting over `Summary` to allow more convenient / performant indexing.
     // For example, we probably don't want to store the entire file in memory.
     fn process(
         &mut self,
         mcap_bytes: &[u8],
         summary: &::mcap::Summary,
+        topic_filter: &TopicFilter,
         emit: &mut dyn FnMut(Chunk),
     ) -> Result<(), Error>;
 }
@@ -167,6 +173,51 @@ impl SelectedDecoders {
             Self::All => true,
             Self::Subset(subset) => subset.contains(value),
         }
+    }
+}
+
+/// Regex-based filter selecting which MCAP topics to decode.
+///
+/// Patterns use [RE2 syntax](https://github.com/google/re2/wiki/Syntax).
+///
+/// A topic is kept if:
+/// - `include` is empty, **or** any pattern in `include` matches; **and**
+/// - no pattern in `exclude` matches.
+///
+/// Patterns are not implicitly anchored; use `^` / `$` if you need anchoring.
+#[derive(Default, Clone, Debug)]
+pub struct TopicFilter {
+    include: Vec<regex_lite::Regex>,
+    exclude: Vec<regex_lite::Regex>,
+}
+
+impl TopicFilter {
+    pub fn with_include_patterns(mut self, include: &[String]) -> Result<Self, regex_lite::Error> {
+        self.include = include
+            .iter()
+            .map(|pattern| regex_lite::Regex::new(pattern))
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok(self)
+    }
+
+    pub fn with_exclude_patterns(mut self, exclude: &[String]) -> Result<Self, regex_lite::Error> {
+        self.exclude = exclude
+            .iter()
+            .map(|pattern| regex_lite::Regex::new(pattern))
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok(self)
+    }
+
+    /// Returns `true` if the given topic passes the filter.
+    pub fn matches(&self, topic: &str) -> bool {
+        let included = self.include.is_empty() || self.include.iter().any(|r| r.is_match(topic));
+        let excluded = self.exclude.iter().any(|r| r.is_match(topic));
+        included && !excluded
+    }
+
+    /// Returns `true` if no patterns are configured (i.e. all topics pass).
+    pub fn is_empty(&self) -> bool {
+        self.include.is_empty() && self.exclude.is_empty()
     }
 }
 
@@ -273,6 +324,7 @@ pub struct ExecutionPlan {
     pub file_decoders: Vec<Box<dyn Decoder>>,
     pub runners: Vec<MessageDecoderRunner>,
     pub assignments: Vec<DecoderAssignment>,
+    pub topic_filter: TopicFilter,
 }
 
 impl ExecutionPlan {
@@ -284,7 +336,7 @@ impl ExecutionPlan {
         emit: &mut dyn FnMut(Chunk),
     ) -> anyhow::Result<()> {
         for mut decoder in self.file_decoders {
-            decoder.process(mcap_bytes, summary, emit)?;
+            decoder.process(mcap_bytes, summary, &self.topic_filter, emit)?;
         }
 
         for runner in &mut self.runners {
@@ -435,6 +487,7 @@ impl DecoderRegistry {
         &self,
         mcap_bytes: &[u8],
         summary: &mcap::Summary,
+        topic_filter: &TopicFilter,
     ) -> anyhow::Result<ExecutionPlan> {
         let file_decoders = self
             .file_factories
@@ -476,6 +529,14 @@ impl DecoderRegistry {
                     "MCAP channel '{}' does not specify a message encoding.",
                     channel.topic,
                 );
+            }
+
+            if !topic_filter.matches(&channel.topic) {
+                re_log::debug!(
+                    "Skipping MCAP channel '{}' because it does not match the topic filter.",
+                    channel.topic,
+                );
+                continue;
             }
 
             // explicit priority order
@@ -536,6 +597,7 @@ impl DecoderRegistry {
             file_decoders,
             runners,
             assignments,
+            topic_filter: topic_filter.clone(),
         })
     }
 }
@@ -584,7 +646,7 @@ mod tests {
         let plan = DecoderRegistry::empty()
             .register_file_decoder::<McapSchemaDecoder>()
             .register_message_decoder::<McapRawDecoder>()
-            .plan(&buffer, &summary)
+            .plan(&buffer, &summary, &TopicFilter::default())
             .expect("failed to plan");
 
         assert_eq!(plan.assignments.len(), 1);
@@ -656,7 +718,7 @@ mod tests {
         );
 
         let plan = DecoderRegistry::all_with_raw_fallback()
-            .plan(&buffer, &summary)
+            .plan(&buffer, &summary, &TopicFilter::default())
             .expect("failed to plan");
 
         let assignment = plan
@@ -691,7 +753,7 @@ mod tests {
         );
 
         let plan = DecoderRegistry::all_with_raw_fallback()
-            .plan(&buffer, &summary)
+            .plan(&buffer, &summary, &TopicFilter::default())
             .expect("failed to plan");
 
         let assignment = plan
@@ -700,5 +762,137 @@ mod tests {
             .find(|assignment| assignment.topic == "non_cdr_string_topic")
             .expect("missing assignment");
         assert_eq!(assignment.decoder.to_string(), "raw");
+    }
+
+    #[test]
+    fn topic_filter_matches() {
+        // Empty filter accepts everything.
+        let filter = TopicFilter::default();
+        assert!(filter.is_empty());
+        assert!(filter.matches("/anything"));
+        assert!(filter.matches("/foo/bar"));
+
+        // Pure include: only matching topics pass.
+        let filter = TopicFilter {
+            include: vec![regex_lite::Regex::new(r"^/camera/").unwrap()],
+            exclude: vec![],
+        };
+        assert!(!filter.is_empty());
+        assert!(filter.matches("/camera/rgb"));
+        assert!(filter.matches("/camera/depth"));
+        assert!(!filter.matches("/imu"));
+
+        // Pure exclude: empty include means everything passes except excluded.
+        let filter = TopicFilter {
+            include: vec![],
+            exclude: vec![regex_lite::Regex::new(r"^/diagnostics").unwrap()],
+        };
+        assert!(filter.matches("/camera/rgb"));
+        assert!(!filter.matches("/diagnostics/agg"));
+
+        // Combined: exclude takes precedence over include.
+        let filter = TopicFilter {
+            include: vec![regex_lite::Regex::new(r"^/camera/").unwrap()],
+            exclude: vec![regex_lite::Regex::new(r"depth$").unwrap()],
+        };
+        assert!(filter.matches("/camera/rgb"));
+        assert!(!filter.matches("/camera/depth"));
+        assert!(!filter.matches("/imu"));
+
+        // Multiple includes: match if ANY matches.
+        let filter = TopicFilter {
+            include: vec![
+                regex_lite::Regex::new(r"^/camera/").unwrap(),
+                regex_lite::Regex::new(r"^/imu$").unwrap(),
+            ],
+            exclude: vec![],
+        };
+        assert!(filter.matches("/camera/rgb"));
+        assert!(filter.matches("/imu"));
+        assert!(!filter.matches("/lidar"));
+    }
+
+    #[test]
+    fn filter_skips_unselected_topics() {
+        let (summary, buffer) = {
+            let cursor = io::Cursor::new(Vec::new());
+            let mut writer = mcap::Writer::new(cursor).expect("failed to create writer");
+
+            let camera_rgb = writer
+                .add_channel(0, "/camera/rgb", "raw", &Default::default())
+                .expect("failed to add channel");
+            let camera_depth = writer
+                .add_channel(0, "/camera/depth", "raw", &Default::default())
+                .expect("failed to add channel");
+            let imu = writer
+                .add_channel(0, "/imu", "raw", &Default::default())
+                .expect("failed to add channel");
+
+            for channel_id in [camera_rgb, camera_depth, imu] {
+                writer
+                    .write_to_known_channel(
+                        &mcap::records::MessageHeader {
+                            channel_id,
+                            sequence: 0,
+                            log_time: 1,
+                            publish_time: 1,
+                        },
+                        &[1, 2, 3],
+                    )
+                    .expect("failed to write message");
+            }
+
+            let summary = writer.finish().expect("failed to finish writer");
+            let buffer = writer.into_inner().into_inner();
+            (summary, buffer)
+        };
+
+        // Include only /camera/* topics.
+        let filter = TopicFilter {
+            include: vec![regex_lite::Regex::new(r"^/camera/").unwrap()],
+            exclude: vec![],
+        };
+
+        let plan = DecoderRegistry::empty()
+            .register_message_decoder::<McapRawDecoder>()
+            .plan(&buffer, &summary, &filter)
+            .expect("failed to plan");
+
+        assert_eq!(plan.assignments.len(), 2);
+        let topics: BTreeSet<_> = plan.assignments.iter().map(|a| a.topic.as_str()).collect();
+        assert!(topics.contains("/camera/rgb"));
+        assert!(topics.contains("/camera/depth"));
+        assert!(!topics.contains("/imu"));
+
+        // Exclude /camera/depth.
+        let filter = TopicFilter {
+            include: vec![],
+            exclude: vec![regex_lite::Regex::new(r"depth$").unwrap()],
+        };
+
+        let plan = DecoderRegistry::empty()
+            .register_message_decoder::<McapRawDecoder>()
+            .plan(&buffer, &summary, &filter)
+            .expect("failed to plan");
+
+        let topics: BTreeSet<_> = plan.assignments.iter().map(|a| a.topic.as_str()).collect();
+        assert_eq!(topics.len(), 2);
+        assert!(topics.contains("/camera/rgb"));
+        assert!(topics.contains("/imu"));
+        assert!(!topics.contains("/camera/depth"));
+
+        // Include + exclude combined.
+        let filter = TopicFilter {
+            include: vec![regex_lite::Regex::new(r"^/camera/").unwrap()],
+            exclude: vec![regex_lite::Regex::new(r"depth$").unwrap()],
+        };
+
+        let plan = DecoderRegistry::empty()
+            .register_message_decoder::<McapRawDecoder>()
+            .plan(&buffer, &summary, &filter)
+            .expect("failed to plan");
+
+        assert_eq!(plan.assignments.len(), 1);
+        assert_eq!(plan.assignments[0].topic, "/camera/rgb");
     }
 }
