@@ -471,6 +471,13 @@ impl DecoderRegistry {
                 continue;
             }
 
+            if channel.message_encoding.trim().is_empty() {
+                re_log::warn_once!(
+                    "MCAP channel '{}' does not specify a message encoding.",
+                    channel.topic,
+                );
+            }
+
             // explicit priority order
             let mut chosen: Option<DecoderIdentifier> = None;
             for (id, decoder) in &msg_decoders {
@@ -539,6 +546,7 @@ mod tests {
 
     use re_chunk::Chunk;
     use re_log_types::TimeType;
+    use re_sdk_types::archetypes::McapMessage;
 
     use super::*;
 
@@ -600,5 +608,97 @@ mod tests {
                 .iter()
                 .any(|chunk| chunk.entity_path().to_string().ends_with("active_topic"))
         );
+    }
+
+    /// Test helper for creating an MCAP summary & blob with a ros2msg-schema channel.
+    fn ros2_summary_with_message_encoding(
+        schema_name: &str,
+        topic: &str,
+        message_encoding: &str,
+        payload: &[u8],
+    ) -> (mcap::Summary, Vec<u8>) {
+        let cursor = io::Cursor::new(Vec::new());
+        let mut writer = mcap::Writer::new(cursor).expect("failed to create writer");
+        let schema_id = writer
+            .add_schema(schema_name, "ros2msg", b"string data")
+            .expect("failed to add schema");
+        let channel_id = writer
+            .add_channel(schema_id, topic, message_encoding, &Default::default())
+            .expect("failed to add channel");
+
+        writer
+            .write_to_known_channel(
+                &mcap::records::MessageHeader {
+                    channel_id,
+                    sequence: 0,
+                    log_time: 1,
+                    publish_time: 1,
+                },
+                payload,
+            )
+            .expect("failed to write message");
+
+        let summary = writer.finish().expect("failed to finish writer");
+        let buffer = writer.into_inner().into_inner();
+        (summary, buffer)
+    }
+
+    /// We expect CDR as encoding for ros2msg-schema messages.
+    /// Test that a non-CDR channel that claims to have ros2msg
+    /// falls back to raw forwarding instead of message reflection.
+    #[test]
+    fn non_cdr_ros2msg_channel_is_forwarded_as_raw_blob() {
+        let (summary, buffer) = ros2_summary_with_message_encoding(
+            "custom_msgs/msg/Foo",
+            "non_cdr_topic",
+            "json",
+            br#"{"data":"hello"}"#,
+        );
+
+        let plan = DecoderRegistry::all_with_raw_fallback()
+            .plan(&buffer, &summary)
+            .expect("failed to plan");
+
+        let assignment = plan
+            .assignments
+            .iter()
+            .find(|assignment| assignment.topic == "non_cdr_topic")
+            .expect("missing assignment");
+        assert_eq!(assignment.decoder.to_string(), "raw");
+
+        let mut chunks = Vec::<Chunk>::new();
+        plan.run(&buffer, &summary, TimeType::TimestampNs, &mut |chunk| {
+            chunks.push(chunk);
+        })
+        .expect("failed to run plan");
+
+        assert!(chunks.iter().any(|chunk| {
+            chunk.entity_path().to_string().ends_with("non_cdr_topic")
+                && chunk
+                    .component_descriptors()
+                    .any(|descr| descr.component == McapMessage::descriptor_data().component)
+        }));
+    }
+
+    /// Tests that semantic ROS 2 parsers also reject non-CDR channels.
+    #[test]
+    fn semantic_ros2_decoder_does_not_claim_non_cdr_channels() {
+        let (summary, buffer) = ros2_summary_with_message_encoding(
+            "std_msgs/msg/String",
+            "non_cdr_string_topic",
+            "json",
+            br#"{"data":"hello"}"#,
+        );
+
+        let plan = DecoderRegistry::all_with_raw_fallback()
+            .plan(&buffer, &summary)
+            .expect("failed to plan");
+
+        let assignment = plan
+            .assignments
+            .iter()
+            .find(|assignment| assignment.topic == "non_cdr_string_topic")
+            .expect("missing assignment");
+        assert_eq!(assignment.decoder.to_string(), "raw");
     }
 }

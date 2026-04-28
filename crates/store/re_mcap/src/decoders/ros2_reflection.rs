@@ -21,6 +21,7 @@ use re_sdk_types::ComponentDescriptor;
 use re_sdk_types::reflection::ComponentDescriptorExt as _;
 use serde::de::DeserializeSeed as _;
 
+use super::ros2::supports_ros2_cdr_channel;
 use crate::parsers::{MessageParser, ParserContext, dds};
 use crate::{DecoderIdentifier, Error, MessageDecoder};
 
@@ -32,6 +33,10 @@ pub fn decode_bytes(top: &MessageSchema, buf: &[u8]) -> anyhow::Result<Value> {
 
     let representation_identifier = dds::RepresentationIdentifier::from_bytes([buf[0], buf[1]])
         .with_context(|| "failed to parse CDR representation identifier")?;
+    anyhow::ensure!(
+        representation_identifier.is_cdr() || representation_identifier.is_cdr2(),
+        "message is not encoded using a CDR representation: {representation_identifier:?}"
+    );
 
     let resolver = MapResolver::new(top.dependencies.iter().map(|dep| (dep.name.clone(), dep)));
 
@@ -55,7 +60,7 @@ struct Ros2ReflectionMessageParser {
 
 #[derive(Debug, thiserror::Error)]
 pub enum Ros2ReflectionError {
-    #[error("Invalid message on channel {channel} for schema {schema}: {source}")]
+    #[error("Invalid message on channel {channel} for schema {schema}: {source:#}")]
     InvalidMessage {
         schema: String,
         channel: String,
@@ -480,9 +485,13 @@ impl MessageDecoder for McapRos2ReflectionDecoder {
             return false;
         }
 
+        if !supports_ros2_cdr_channel(channel) {
+            return false;
+        }
+
         // Check if the semantic decoder would handle this message type
         let semantic_decoder = super::McapRos2Decoder::new();
-        !semantic_decoder.supports_schema(&schema.name)
+        !semantic_decoder.supports_channel(channel)
     }
 
     fn message_parser(
