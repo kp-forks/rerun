@@ -77,6 +77,7 @@ MCAP files allow for arbitrary custom message payloads, so you might have other 
 Rerun's MCAP importer automatically decodes unknown Protobuf or ROS 2 messages using schema reflection.
 This means that you won't get Rerun archetypes out of the box, but the message fields become queryable components (e.g. for training data curation via the Rerun SDK, see [here](decoders-explained.md#accessing-decoder-data)).
 Depending on the contents of your data, you can still manually add visualizers for certain fields to your blueprint, e.g. a time-series view for scalars or a dataframe view.
+You can also use [Lenses](../../query-and-transform/lenses.md) to attach Rerun semantics to the reflected data.
 
 ### Example: time-series plot for custom message scalars
 

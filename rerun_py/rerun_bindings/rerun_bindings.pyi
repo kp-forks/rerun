@@ -835,6 +835,12 @@ def send_arrow_chunk(
         A dictionary mapping component types to their values.
     """
 
+def send_chunk(
+    chunk: ChunkInternal,
+    recording: PyRecordingStream | None = None,
+) -> None:
+    """Send a pre-built chunk to the recording stream."""
+
 def log_file_from_path(
     file_path: str | os.PathLike[str],
     entity_path_prefix: str | None = None,
