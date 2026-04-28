@@ -278,7 +278,11 @@ fn process_task_response(
                 let desc = &descriptors[idx];
 
                 let segment_id = desc.segment_id.id.clone();
-                let error = (status != "success").then(|| msg.to_owned());
+                let error = match status {
+                    "success" => None,
+                    "cancelled" => Some("registration was cancelled".to_owned()),
+                    _ => Some(msg.to_owned()),
+                };
 
                 results.push((desc.storage_url.to_string(), segment_id, error));
             }
