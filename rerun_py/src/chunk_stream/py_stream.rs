@@ -128,6 +128,7 @@ impl PyLazyChunkStreamInternal {
         &self,
         lenses: Vec<PyRef<'_, crate::lenses::PyLensInternal>>,
         output_mode: &str,
+        content: Option<Vec<String>>,
     ) -> PyResult<Self> {
         let stream = self.take_inner()?;
         let mode = crate::lenses::parse_output_mode(output_mode)?;
@@ -135,7 +136,11 @@ impl PyLazyChunkStreamInternal {
         for lens in &lenses {
             collection = collection.add_lens(lens.inner().clone());
         }
-        Ok(Self::new(stream.lenses(collection)))
+        let content = content.map(|exprs| {
+            let rules = exprs.join(" ");
+            EntityPathFilter::parse_forgiving(&rules).resolve_without_substitutions()
+        });
+        Ok(Self::new(stream.lenses(collection, content)))
     }
 
     /// Concatenate chunks from multiple streams into one.

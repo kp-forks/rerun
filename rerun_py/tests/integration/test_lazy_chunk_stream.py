@@ -489,6 +489,60 @@ def test_lenses_chained_with_filter(test_rrd_path: Path) -> None:
     )
 
 
+def test_lenses_content_filter_match(test_rrd_path: Path) -> None:
+    """With `content` set to a matching path, lenses apply only to those chunks; others pass through."""
+
+    lens = Lens(
+        "Imu:accel",
+        to_entity={
+            "/transformed": LensOutput().to_component(rr.Scalars.descriptor_scalars(), Selector(".x")),
+        },
+    )
+
+    store = (
+        RrdReader(test_rrd_path)
+        .stream()
+        .lenses(lens, output_mode="drop_unmatched", content="/sensors/**")
+        .drop(content="/__properties/**")
+        .collect()
+    )
+    # /sensors/imu was matched by content -> lens applied -> produced /transformed.
+    # All other chunks pass through unchanged regardless of `drop_unmatched`.
+    assert store.summary() == inline_snapshot("""\
+/cameras/front rows=1 bytes=1.5 KiB static=False timelines=['my_index'] cols=['TextLog:text', 'my_index']
+/config rows=1 bytes=1.1 KiB static=True timelines=[] cols=['TextLog:text']
+/robots/arm rows=2 bytes=1.6 KiB static=False timelines=['my_index', 'other_timeline'] cols=['Points3D:colors', 'Points3D:positions', 'my_index', 'other_timeline']
+/transformed rows=2 bytes=1.5 KiB static=False timelines=['my_index'] cols=['Scalars:scalars', 'my_index']\
+""")
+
+
+def test_lenses_content_filter_excludes_lens_target(test_rrd_path: Path) -> None:
+    """Chunks outside the `content` scope bypass the lens and pass through, regardless of output_mode."""
+
+    lens = Lens(
+        "Imu:accel",
+        to_entity={
+            "/transformed": LensOutput().to_component(rr.Scalars.descriptor_scalars(), Selector(".x")),
+        },
+    )
+
+    # Content scope only includes /robots/**, so /sensors/imu is bypassed entirely
+    # (the lens never sees it). /robots/arm is in scope but the lens doesn't match,
+    # so under drop_unmatched it's dropped.
+    store = (
+        RrdReader(test_rrd_path)
+        .stream()
+        .lenses(lens, output_mode="drop_unmatched", content="/robots/**")
+        .drop(content="/__properties/**")
+        .collect()
+    )
+    # /sensors/imu passes through (out of content scope). No /transformed (lens never matched).
+    paths = store.schema().entity_paths()
+    assert "/transformed" not in paths
+    assert "/sensors/imu" in paths
+    assert "/robots/arm" not in paths  # in scope, but dropped by drop_unmatched
+
+
 def test_lenses_invalid_output_mode(test_rrd_path: Path) -> None:
     """Invalid output_mode string raises ValueError."""
 
