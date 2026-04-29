@@ -10,7 +10,7 @@ use re_log_types::external::arrow::datatypes::UInt32Type;
 use re_sdk_types::external::arrow::datatypes::DataType as ArrowDatatype;
 use re_sdk_types::{ComponentDescriptor, Loggable as _, RowId, archetypes, components};
 use re_view::clamped_or_nothing;
-use re_viewer_context::VisualizerReportSeverity;
+use re_viewer_context::{ViewQuery, VisualizerReportSeverity};
 
 use crate::{MAX_NUM_SERIES_FOR_REMAPPED_SCALARS, PlotPoint, PlotSeriesKind};
 
@@ -411,4 +411,19 @@ pub fn all_scalars_indices<'a>(
         .flat_map(|chunk| chunk.iter_component_indices(*query.timeline()))
         // That is just so we can satisfy the `range_zip` contract later on.
         .map(|index| (index, ()))
+}
+
+/// Returns true if `series` should be drawn with the highlighted (hovered/selected) style.
+///
+/// Used by both the line visualizer (to thicken the stroke) and the marker painter (to grow
+/// the markers), so the visual highlight stays consistent across line and scatter series.
+pub(crate) fn is_series_highlighted(query: &ViewQuery<'_>, series: &crate::PlotSeries) -> bool {
+    query
+        .highlights
+        .entity_highlight(series.instance_path.entity_path.hash())
+        .index_highlight(
+            series.instance_path.instance,
+            series.visualizer_instruction_id,
+        )
+        .any()
 }
