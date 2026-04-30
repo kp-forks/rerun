@@ -8,7 +8,7 @@ import pyarrow as pa
 import pytest
 import rerun as rr
 from inline_snapshot import snapshot as inline_snapshot
-from rerun.experimental import Chunk, DeriveLens, Lens, MutateLens, RrdReader, Selector
+from rerun.experimental import Chunk, DeriveLens, LazyChunkStream, Lens, MutateLens, RrdReader, Selector
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -810,3 +810,71 @@ def test_apply_selector_component_not_found() -> None:
 
     with pytest.raises(ValueError, match="not found"):
         chunk.apply_selector("nonexistent:component", Selector("."))
+
+
+# ---------------------------------------------------------------------------
+# with_entity_path
+# ---------------------------------------------------------------------------
+
+
+def test_with_entity_path_preserves_data() -> None:
+    """with_entity_path swaps the entity path and assigns a fresh chunk ID while preserving rows and components."""
+    chunk = Chunk.from_columns(
+        "/sensor",
+        indexes=[rr.TimeColumn("frame", sequence=[0, 1])],
+        columns=rr.Points3D.columns(positions=[[1, 2, 3], [4, 5, 6]]),
+    )
+    moved = chunk.with_entity_path("/left/sensor")
+
+    assert moved.entity_path == "/left/sensor"
+    assert moved.id != chunk.id
+    assert moved.num_rows == chunk.num_rows
+    assert moved.num_columns == chunk.num_columns
+    assert sorted(moved.timeline_names) == sorted(chunk.timeline_names)
+
+
+def _write_simple_rrd(path: Path, app_id: str, recording_id: str, *, send_properties: bool) -> None:
+    """Write an RRD with a fixed two-entity, two-archetype schema."""
+    with rr.RecordingStream(app_id, recording_id=recording_id, send_properties=send_properties) as rec:
+        rec.save(path)
+        rec.send_columns(
+            "/points",
+            indexes=[rr.TimeColumn("frame", sequence=[0, 1])],
+            columns=rr.Points3D.columns(positions=[[1, 2, 3], [4, 5, 6]]),
+        )
+        rec.send_columns(
+            "/log",
+            indexes=[rr.TimeColumn("frame", sequence=[0])],
+            columns=rr.TextLog.columns(text=["hello"]),
+        )
+
+
+@pytest.mark.parametrize("send_properties", [False, True])
+def test_merge_two_rrds_with_distinct_entity_path_prefixes(tmp_path: Path, send_properties: bool) -> None:
+    """
+    Merge two RRDs with the same schema, prefixing each side's entity paths uniquely.
+
+    Parametrized over `send_properties` to cover both the clean case (no auto properties chunk)
+    and the realistic case (recordings with `/__properties` need to be filtered out before
+    prefixing, so each merged recording keeps a single canonical properties chunk).
+    """
+    a_path = tmp_path / "a.rrd"
+    b_path = tmp_path / "b.rrd"
+    _write_simple_rrd(a_path, "merge_test_a", "rec_a", send_properties=send_properties)
+    _write_simple_rrd(b_path, "merge_test_b", "rec_b", send_properties=send_properties)
+
+    def prefixed(reader: RrdReader, prefix: str) -> LazyChunkStream:
+        stream = reader.stream()
+        if send_properties:
+            # Properties are recording-scope and shouldn't be relocated under a prefix.
+            stream = stream.drop(content=f"{rr.RECORDING_PROPERTIES_PATH}/**")
+        return stream.map(lambda c: c.with_entity_path(f"{prefix}{c.entity_path}"))
+
+    left = prefixed(RrdReader(a_path), "/left")
+    right = prefixed(RrdReader(b_path), "/right")
+
+    merged_path = tmp_path / "merged.rrd"
+    LazyChunkStream.merge(left, right).write_rrd(merged_path, application_id="merged", recording_id="merged")
+
+    paths = set(RrdReader(merged_path).store().schema().entity_paths())
+    assert paths == {"/left/points", "/left/log", "/right/points", "/right/log"}

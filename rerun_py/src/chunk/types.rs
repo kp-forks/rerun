@@ -105,6 +105,16 @@ impl PyChunkInternal {
         Ok(Self::new(Arc::new(chunk)))
     }
 
+    /// Return a copy of this chunk with a new entity path.
+    ///
+    /// A fresh chunk ID is generated to avoid aliasing the original chunk in downstream
+    /// caches and indices. Row IDs, timelines, and components are preserved as-is.
+    fn with_entity_path(&self, entity_path: &str) -> Self {
+        let entity_path = EntityPath::parse_forgiving(entity_path);
+        let chunk = self.chunk.clone_with_new_entity_path(entity_path);
+        Self::new(Arc::new(chunk))
+    }
+
     /// Create a Chunk from an entity path, timeline arrays, and component arrays.
     ///
     /// This is the low-level entry point called by `Chunk.from_columns()` in Python.

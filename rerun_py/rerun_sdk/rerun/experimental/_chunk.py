@@ -136,6 +136,21 @@ class Chunk:
         """Convert this chunk to an Arrow RecordBatch."""
         return self._internal.to_record_batch()
 
+    def with_entity_path(self, entity_path: str) -> Chunk:
+        """
+        Return a copy of this chunk with a new entity path.
+
+        A fresh chunk ID is generated to avoid aliasing the original chunk in downstream
+        caches and indices. Row IDs, timelines, and components are preserved as-is.
+
+        Parameters
+        ----------
+        entity_path:
+            The new entity path for the returned chunk (e.g. `"/left/camera/image"`).
+
+        """
+        return Chunk(self._internal.with_entity_path(entity_path))
+
     def apply_selector(
         self,
         source: ComponentDescriptor | str,
