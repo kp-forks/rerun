@@ -122,13 +122,13 @@ impl PyChunkInternal {
     /// Apply one or more lenses to this chunk, returning transformed chunks.
     #[expect(clippy::needless_pass_by_value)] // PyO3 requires owned Vec
     #[pyo3(signature = (lenses))]
-    fn apply_lenses(
-        &self,
-        lenses: Vec<PyRef<'_, crate::lenses::PyLensInternal>>,
-    ) -> PyResult<Vec<Self>> {
+    fn apply_lenses(&self, lenses: Vec<crate::lenses::PyLens<'_>>) -> PyResult<Vec<Self>> {
         use re_lenses_core::ChunkExt as _;
 
-        let lenses: Vec<_> = lenses.iter().map(|l| l.inner().clone()).collect();
+        let lenses: Vec<_> = lenses
+            .iter()
+            .map(|l| l.build())
+            .collect::<PyResult<Vec<_>>>()?;
         match self.chunk.apply_lenses(&lenses) {
             Ok(chunks) => Ok(chunks
                 .into_iter()
