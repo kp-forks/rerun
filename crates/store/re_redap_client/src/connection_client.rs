@@ -133,6 +133,86 @@ where
             .map_err(|err| ApiError::tonic(err, "/WhoAmI failed"))
     }
 
+    /// Estimate the round-trip time to the server.
+    ///
+    /// Performs `num_pings` calls to `/DoBandwidthTest` with `num_bytes = 1` and returns the
+    /// minimum elapsed time. Using the minimum (rather than the mean) helps reject latency spikes
+    /// from scheduling jitter, or transient network congestion.
+    pub async fn rtt(&mut self, num_pings: usize) -> ApiResult<std::time::Duration> {
+        if num_pings == 0 {
+            return Err(ApiError::invalid_arguments(
+                "rtt requires at least one ping",
+            ));
+        }
+
+        let mut best = std::time::Duration::MAX;
+        for _ in 0..num_pings {
+            let start = web_time::Instant::now();
+            let mut stream = self
+                .inner()
+                .do_bandwidth_test(re_protos::cloud::v1alpha1::DoBandwidthTestRequest {
+                    num_bytes: 1,
+                })
+                .await
+                .map_err(|err| ApiError::tonic(err, "/DoBandwidthTest failed"))?
+                .into_inner();
+            // Drain the stream so we measure the full round-trip including the response.
+            while stream
+                .next()
+                .await
+                .transpose()
+                .map_err(|err| ApiError::tonic(err, "/DoBandwidthTest stream error"))?
+                .is_some()
+            {}
+            best = best.min(start.elapsed());
+        }
+        Ok(best)
+    }
+
+    /// Estimate the download bandwidth (bytes/second) from the server.
+    ///
+    /// Requests `num_bytes` of pseudo-random bytes via `/DoBandwidthTest`, subtracts `rtt` from
+    /// the elapsed time, and divides by `num_bytes`.
+    ///
+    /// Returns `None` if the elapsed time is not greater than `rtt` (e.g. very small payloads on
+    /// a fast loopback connection).
+    pub async fn bandwidth_bytes_per_sec(
+        &mut self,
+        num_bytes: u64,
+        rtt: std::time::Duration,
+    ) -> ApiResult<Option<f64>> {
+        let max = re_protos::cloud::v1alpha1::ext::MAX_BANDWIDTH_TEST_BYTES;
+        if num_bytes > max {
+            return Err(ApiError::invalid_arguments(format!(
+                "num_bytes ({num_bytes}) exceeds the maximum of {max}"
+            )));
+        }
+
+        let start = web_time::Instant::now();
+        let mut stream = self
+            .inner()
+            .do_bandwidth_test(re_protos::cloud::v1alpha1::DoBandwidthTestRequest { num_bytes })
+            .await
+            .map_err(|err| ApiError::tonic(err, "/DoBandwidthTest failed"))?
+            .into_inner();
+
+        let mut received: u64 = 0;
+        while let Some(item) = stream
+            .next()
+            .await
+            .transpose()
+            .map_err(|err| ApiError::tonic(err, "/DoBandwidthTest stream error"))?
+        {
+            received += item.payload.len() as u64;
+        }
+        let elapsed = start.elapsed();
+
+        let Some(transfer) = elapsed.checked_sub(rtt).filter(|t| !t.is_zero()) else {
+            return Ok(None);
+        };
+        Ok(Some(received as f64 / transfer.as_secs_f64()))
+    }
+
     /// Find all entries matching the given filter.
     #[tracing::instrument(level = "info", skip_all)]
     pub async fn find_entries(&mut self, filter: EntryFilter) -> ApiResult<Vec<EntryDetails>> {
