@@ -317,7 +317,7 @@ impl SeriesPointsSystem {
                 let all_marker_shapes_chunks = marker_iter.chunks().iter().collect_vec();
 
                 if all_marker_shapes_chunks.len() == 1
-                    && all_marker_shapes_chunks[0].chunk.is_static()
+                    && all_marker_shapes_chunks[0].chunk.num_rows() == 1
                 {
                     re_tracing::profile_scope!("override/default fast path");
 

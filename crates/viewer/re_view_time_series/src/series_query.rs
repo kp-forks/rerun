@@ -192,7 +192,7 @@ pub fn collect_colors(
     let color_iter = query_results.iter_optional(color_descriptor.component);
     let all_color_chunks = color_iter.chunks().iter().collect_vec();
 
-    if all_color_chunks.len() == 1 && all_color_chunks[0].chunk.is_static() {
+    if all_color_chunks.len() == 1 && all_color_chunks[0].chunk.num_rows() == 1 {
         re_tracing::profile_scope!("override/default fast path");
 
         if let Some(colors) = all_color_chunks[0].iter_slices::<u32>().next() {
@@ -350,7 +350,7 @@ pub fn collect_radius_ui(
         let radius_iter = query_results.iter_optional(radius_descriptor.component);
         let all_radius_chunks = radius_iter.chunks().iter().collect_vec();
 
-        if all_radius_chunks.len() == 1 && all_radius_chunks[0].chunk.is_static() {
+        if all_radius_chunks.len() == 1 && all_radius_chunks[0].chunk.num_rows() == 1 {
             re_tracing::profile_scope!("override/default fast path");
 
             if let Some(radius) = all_radius_chunks[0].iter_slices::<f32>().next() {
@@ -364,7 +364,7 @@ pub fn collect_radius_ui(
                     }
                 }
             }
-        } else {
+        } else if !all_radius_chunks.is_empty() {
             re_tracing::profile_scope!("standard path");
 
             let all_radii = all_radius_chunks.iter().flat_map(|chunk| {
