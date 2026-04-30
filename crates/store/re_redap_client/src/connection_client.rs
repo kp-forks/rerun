@@ -101,6 +101,7 @@ where
     <T::ResponseBody as Body>::Error: Into<StdError> + std::marker::Send,
 {
     /// Uses the `/Version` endpoint for testing roundtrip time.
+    #[tracing::instrument(level = "info", skip_all)]
     pub async fn ping(&mut self) -> ApiResult<()> {
         self.inner()
             .version(VersionRequest {})
@@ -110,6 +111,7 @@ where
     }
 
     /// Returns version and deployment information from the server.
+    #[tracing::instrument(level = "info", skip_all)]
     pub async fn version_info(&mut self) -> ApiResult<VersionResponse> {
         let response = self
             .inner()
@@ -122,6 +124,7 @@ where
 
     /// Calls the `/WhoAmI` endpoint to verify authentication and retrieve the user's identity
     /// and permissions.
+    #[tracing::instrument(level = "info", skip_all)]
     pub async fn who_am_i(&mut self) -> ApiResult<re_protos::cloud::v1alpha1::WhoAmIResponse> {
         self.inner()
             .who_am_i(re_protos::cloud::v1alpha1::WhoAmIRequest {})
@@ -131,6 +134,7 @@ where
     }
 
     /// Find all entries matching the given filter.
+    #[tracing::instrument(level = "info", skip_all)]
     pub async fn find_entries(&mut self, filter: EntryFilter) -> ApiResult<Vec<EntryDetails>> {
         let (response, trace_id) = TonicResponseExt::into_inner_and_trace_id(
             self.inner()
@@ -156,6 +160,7 @@ where
     }
 
     /// Delete the provided entry.
+    #[tracing::instrument(level = "info", skip_all)]
     pub async fn delete_entry(&mut self, entry_id: EntryId) -> ApiResult {
         self.inner()
             .delete_entry(DeleteEntryRequest {
@@ -168,6 +173,7 @@ where
     }
 
     /// Update the provided entry.
+    #[tracing::instrument(level = "info", skip_all)]
     pub async fn update_entry(
         &mut self,
         entry_id: EntryId,
@@ -221,6 +227,7 @@ where
     }
 
     /// Create a new dataset entry.
+    #[tracing::instrument(level = "info", skip_all)]
     pub async fn create_dataset_entry(
         &mut self,
         name: String,
@@ -247,6 +254,7 @@ where
     }
 
     /// Get information on a dataset entry.
+    #[tracing::instrument(level = "info", skip_all)]
     pub async fn read_dataset_entry(&mut self, entry_id: EntryId) -> ApiResult<DatasetEntry> {
         let (inner, trace_id) = TonicResponseExt::into_inner_and_trace_id(
             self.inner()
@@ -272,6 +280,7 @@ where
     }
 
     /// Update the details of a dataset entry.
+    #[tracing::instrument(level = "info", skip_all)]
     pub async fn update_dataset_entry(
         &mut self,
         entry_id: EntryId,
@@ -301,6 +310,7 @@ where
     }
 
     /// Get information on a table entry.
+    #[tracing::instrument(level = "info", skip_all)]
     pub async fn read_table_entry(&mut self, entry_id: EntryId) -> ApiResult<TableEntry> {
         let (inner, trace_id) = TonicResponseExt::into_inner_and_trace_id(
             self.inner()
@@ -322,6 +332,7 @@ where
     }
 
     //TODO(ab): accept entry name
+    #[tracing::instrument(level = "info", skip_all)]
     pub async fn get_segment_table_schema(&mut self, entry_id: EntryId) -> ApiResult<ArrowSchema> {
         let (inner, trace_id) = TonicResponseExt::into_inner_and_trace_id(
             self.inner()
@@ -357,6 +368,7 @@ where
 
     /// Get a list of segment IDs for the given dataset entry ID.
     //TODO(ab): is there a way—and a reason—to not collect and instead return a stream?
+    #[tracing::instrument(level = "info", skip_all)]
     pub async fn get_dataset_segment_ids(
         &mut self,
         entry_id: EntryId,
@@ -429,6 +441,7 @@ where
     }
 
     //TODO(ab): accept entry name
+    #[tracing::instrument(level = "info", skip_all)]
     pub async fn get_dataset_manifest_schema(
         &mut self,
         entry_id: EntryId,
@@ -472,6 +485,7 @@ where
     ///
     /// Each item in the returned stream is a manifest part (a slice of the full manifest).
     /// Use [`RawRrdManifest::concat`] to combine parts if needed.
+    #[tracing::instrument(level = "info", skip_all)]
     pub async fn get_rrd_manifest_stream(
         &mut self,
         dataset_id: EntryId,
@@ -515,6 +529,7 @@ where
     }
 
     /// Get the full [`RawRrdManifest`] of a recording, concatenated from all stream parts.
+    #[tracing::instrument(level = "info", skip_all)]
     pub async fn get_rrd_manifest(
         &mut self,
         dataset_id: EntryId,
@@ -554,6 +569,7 @@ where
     ///
     /// You can include/exclude static/temporal chunks,
     /// and limit the query to a time range.
+    #[tracing::instrument(level = "info", skip_all)]
     pub async fn query_dataset_raw(
         &mut self,
         params: SegmentQueryParams,
@@ -608,6 +624,7 @@ where
     /// and limit the query to a time range.
     ///
     /// You can pass on the results to [`Self::query_dataset_chunk_index`].
+    #[tracing::instrument(level = "info", skip_all)]
     pub async fn query_dataset_chunk_index(
         &mut self,
         params: SegmentQueryParams,
@@ -643,6 +660,7 @@ where
     }
 
     /// Input should be same schema as what [`Self::query_dataset_chunk_index`] returns.
+    #[tracing::instrument(level = "info", skip_all)]
     pub async fn fetch_segment_chunks_by_id(
         &mut self,
         record_batch: &RecordBatch,
@@ -667,6 +685,7 @@ where
     /// Fetches chunks for a specified partition and query.
     ///
     /// Convenience for [`Self::query_dataset_chunk_index`] + [`Self::fetch_segment_chunks_by_id`].
+    #[tracing::instrument(level = "info", skip_all)]
     pub async fn fetch_segment_chunks_by_query(
         &mut self,
         params: SegmentQueryParams,
@@ -719,6 +738,7 @@ where
     ///
     /// NOTE: The server may pool multiple registrations into a single task. The result always has
     /// the same length as the output, so task ids may be duplicated.
+    #[tracing::instrument(level = "info", skip_all)]
     pub async fn register_with_dataset(
         &mut self,
         dataset_id: EntryId,
@@ -887,6 +907,7 @@ where
     /// This is only useful in the very specific, catatrophic scenario where the contents of the
     /// task queue were lost and some tasks are now stuck in `status=pending` forever.
     /// Do not use this unless you know exactly what you're doing.
+    #[tracing::instrument(level = "info", skip_all)]
     pub async fn unregister_from_dataset(
         &mut self,
         dataset_id: EntryId,
@@ -944,6 +965,7 @@ where
 
     /// Register a foreign Lance table to a new table entry in the catalog.
     //TODO(ab): in the future, we will probably support my types of tables (parquet on S3, etc.)
+    #[tracing::instrument(level = "info", skip_all)]
     pub async fn register_table(
         &mut self,
         name: EntryName,
@@ -977,6 +999,7 @@ where
     }
 
     #[expect(clippy::fn_params_excessive_bools)] // TODO(emilk): remove bool parameters
+    #[tracing::instrument(level = "info", skip_all)]
     pub async fn do_maintenance(
         &mut self,
         dataset_id: EntryId,
@@ -1007,6 +1030,7 @@ where
         Ok(())
     }
 
+    #[tracing::instrument(level = "info", skip_all)]
     pub async fn do_global_maintenance(&mut self) -> ApiResult {
         self.inner()
             .do_global_maintenance(tonic::Request::new(
@@ -1018,6 +1042,7 @@ where
         Ok(())
     }
 
+    #[tracing::instrument(level = "info", skip_all)]
     pub async fn get_table_names(&mut self) -> ApiResult<Vec<EntryName>> {
         Ok(self
             .find_entries(re_protos::cloud::v1alpha1::EntryFilter {
@@ -1031,6 +1056,7 @@ where
     }
 
     // -- Tasks API --
+    #[tracing::instrument(level = "info", skip_all)]
     pub async fn query_tasks_on_completion(
         &mut self,
         task_ids: Vec<TaskId>,
@@ -1053,6 +1079,7 @@ where
         ))
     }
 
+    #[tracing::instrument(level = "info", skip_all)]
     pub async fn cancel_tasks(&mut self, task_ids: Vec<TaskId>) -> ApiResult {
         self.inner()
             .cancel_tasks(CancelTasksRequest { ids: task_ids })
@@ -1062,6 +1089,7 @@ where
         Ok(())
     }
 
+    #[tracing::instrument(level = "info", skip_all)]
     pub async fn query_tasks(&mut self, task_ids: Vec<TaskId>) -> ApiResult<QueryTasksResponse> {
         let q = QueryTasksRequest { task_ids };
         let response = self
@@ -1075,6 +1103,7 @@ where
         Ok(response)
     }
 
+    #[tracing::instrument(level = "info", skip_all)]
     pub async fn get_entry_id(
         &mut self,
         entry_name: &EntryName,
@@ -1104,6 +1133,7 @@ where
             .transpose()
     }
 
+    #[tracing::instrument(level = "info", skip_all)]
     pub async fn write_table(
         &mut self,
         stream: impl Stream<Item = RecordBatch> + Send + 'static,
@@ -1130,6 +1160,7 @@ where
     /// Create a table entry.
     ///
     /// NOTE: if `url` is provided, the caller must ensure that it is writable and yet unused.
+    #[tracing::instrument(level = "info", skip_all)]
     pub async fn create_table_entry(
         &mut self,
         name: EntryName,

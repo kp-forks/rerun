@@ -390,6 +390,7 @@ impl PyCatalogClientInternal {
 }
 
 impl PyCatalogClientInternal {
+    #[tracing::instrument(skip_all)]
     fn update_catalog_providers(&self, py: Python<'_>, force_register: bool) -> Result<(), PyErr> {
         let client = wait_for_future(py, self.connection.client())?;
         let runtime = get_tokio_runtime().handle();

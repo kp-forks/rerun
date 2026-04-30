@@ -1592,7 +1592,8 @@ pub fn make_range_sane(y_range: Range1D) -> Range1D {
 
     if end <= start {
         let center = f64::midpoint(start, end);
-        Range1D::new(center - 1.0, center + 1.0)
+        let margin = f64::max(1.0, center.abs() * 0.01);
+        Range1D::new(center - margin, center + margin)
     } else {
         Range1D::new(start, end)
     }
