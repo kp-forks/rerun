@@ -11,10 +11,10 @@ use crate::chunk_fetcher::{
     fetch_batch_group_via_grpc, split_batch_by_direct_url,
 };
 use crate::dataframe_query_common::{
-    DataframeClientAPI, IndexValuesMap, force_grpc, group_chunk_infos_by_segment_id,
-    prepend_string_column_schema,
+    DEFAULT_BATCH_BYTES, DEFAULT_BATCH_ROWS, DataframeClientAPI, IndexValuesMap, force_grpc,
+    group_chunk_infos_by_segment_id, prepend_string_column_schema,
 };
-use arrow::array::{Array, RecordBatch, RecordBatchOptions, StringArray, UInt64Array};
+use arrow::array::{Array, ArrayRef, RecordBatch, RecordBatchOptions, StringArray, UInt64Array};
 use arrow::compute::SortOptions;
 use arrow::datatypes::{Schema, SchemaRef};
 use datafusion::common::hash_utils::HashValue as _;
@@ -30,6 +30,7 @@ use datafusion::physical_plan::execution_plan::{Boundedness, EmissionType};
 use datafusion::physical_plan::{DisplayAs, DisplayFormatType, ExecutionPlan, PlanProperties};
 use futures::StreamExt as _;
 use futures_util::{FutureExt as _, Stream};
+use re_arrow_util::concat_arrays;
 use re_dataframe::external::re_chunk::Chunk;
 use re_dataframe::external::re_chunk_store::ChunkStore;
 use re_dataframe::utils::align_record_batch_to_schema;
@@ -409,8 +410,22 @@ impl<T: DataframeClientAPI> SegmentStreamExec<T> {
     }
 }
 
+/// Per-batch caps used by `send_next_row_batch`.
+///
+/// `re_dataframe::QueryHandle::next_row` yields a single index value per call;
+/// emitting one `RecordBatch` per row is dominated by per-call overhead (alloc,
+/// schema align, async channel send). Accumulating up to `DEFAULT_BATCH_ROWS`
+/// rows or `DEFAULT_BATCH_BYTES` bytes (whichever first) amortises that
+/// overhead while keeping batch memory bounded for wide columns
+/// (e.g. images, large lists).
+///
+/// These mirror the values used by `SizedCoalesceBatchesExec` so that the
+/// downstream coalescer is mostly a pass-through.
+const FLUSH_BATCH_ROWS: usize = DEFAULT_BATCH_ROWS;
+const FLUSH_BATCH_BYTES: usize = DEFAULT_BATCH_BYTES as usize;
+
 #[tracing::instrument(level = "trace", skip_all)]
-async fn send_next_row(
+async fn send_next_row_batch(
     query_handle: &QueryHandle<StorageEngine>,
     segment_id: &str,
     target_schema: &Arc<Schema>,
@@ -423,28 +438,64 @@ async fn send_next_row(
         return Ok(None);
     }
 
+    let max_rows_this_batch = limit
+        .map(|l| l.saturating_sub(*rows_sent).min(FLUSH_BATCH_ROWS))
+        .unwrap_or(FLUSH_BATCH_ROWS);
+    if max_rows_this_batch == 0 {
+        return Ok(None);
+    }
+
     let query_schema = Arc::clone(query_handle.schema());
     let num_fields = query_schema.fields.len();
 
-    let Some(mut next_row) = query_handle.next_row() else {
-        return Ok(None);
-    };
+    // Accumulate rows from the in-memory store until either the row cap is
+    // hit, the byte budget is hit, or the query is exhausted. The byte
+    // budget keeps memory bounded for wide columns (images, large lists)
+    // where 2048 rows can far exceed `FLUSH_BATCH_BYTES`.
+    let mut row_groups: Vec<Vec<ArrayRef>> = Vec::with_capacity(max_rows_this_batch);
+    let mut total_rows = 0usize;
+    let mut total_bytes = 0usize;
 
-    if next_row.is_empty() {
-        // Should not happen
+    while total_rows < max_rows_this_batch && total_bytes < FLUSH_BATCH_BYTES {
+        let Some(row) = query_handle.next_row() else {
+            break;
+        };
+        if row.is_empty() {
+            // Should not happen
+            break;
+        }
+        if num_fields != row.len() {
+            return Err(ApiError::internal(
+                "Unexpected number of columns returned from query",
+            ));
+        }
+        total_rows += row[0].len();
+        total_bytes += row.iter().map(|a| a.get_array_memory_size()).sum::<usize>();
+        row_groups.push(row);
+    }
+
+    if row_groups.is_empty() {
         return Ok(None);
     }
-    if num_fields != next_row.len() {
-        return Err(ApiError::internal(
-            "Unexpected number of columns returned from query",
-        ));
+
+    // Concatenate per-column arrays across the accumulated row groups.
+    let mut columns: Vec<ArrayRef> = Vec::with_capacity(num_fields + 1);
+    for col_idx in 0..num_fields {
+        let parts: Vec<&dyn Array> = row_groups.iter().map(|r| r[col_idx].as_ref()).collect();
+        let combined = concat_arrays(&parts).map_err(|err| {
+            ApiError::deserialization_with_source(
+                None,
+                err,
+                "concatenating per-column arrays for batched output",
+            )
+        })?;
+        columns.push(combined);
     }
 
-    let num_rows = next_row[0].len();
+    // Single segment-id `StringArray` of length `total_rows` for the whole batch.
     let sid_array =
-        Arc::new(StringArray::from(vec![segment_id.to_owned(); num_rows])) as Arc<dyn Array>;
-
-    next_row.insert(0, sid_array);
+        Arc::new(StringArray::from(vec![segment_id.to_owned(); total_rows])) as ArrayRef;
+    columns.insert(0, sid_array);
 
     let batch_schema = Arc::new(prepend_string_column_schema(
         &query_schema,
@@ -453,8 +504,8 @@ async fn send_next_row(
 
     let batch = RecordBatch::try_new_with_options(
         batch_schema,
-        next_row,
-        &RecordBatchOptions::default().with_row_count(Some(num_rows)),
+        columns,
+        &RecordBatchOptions::default().with_row_count(Some(total_rows)),
     )
     .map_err(|err| {
         ApiError::deserialization_with_source(
@@ -470,7 +521,9 @@ async fn send_next_row(
         ApiError::internal_with_source(None, err, "DataFusion schema mismatch error")
     })?;
 
-    // Slice the batch to respect the row limit
+    // Slice the batch to respect the row limit. We pre-cap `max_rows_this_batch`
+    // by the limit, but a single `next_row()` call can return more than one row
+    // (see `_next_row` for multi-row index values), so a final trim is needed.
     let output_batch = if let Some(limit) = limit {
         let remaining = limit.saturating_sub(*rows_sent);
         if remaining == 0 {
@@ -552,7 +605,7 @@ async fn chunk_store_cpu_worker_thread(
             rows_sent: &mut usize,
             limit: Option<usize>,
         ) -> ApiResult<()> {
-            while send_next_row(
+            while send_next_row_batch(
                 &self.query_handle,
                 &self.segment_id,
                 projected_schema,

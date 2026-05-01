@@ -534,6 +534,14 @@ impl<T: DataframeClientAPI> TableProvider for DataframeQueryTableProvider<T> {
                         .next();
             }
 
+            // `SegmentStreamExec` already emits batches sized by
+            // `DEFAULT_BATCH_ROWS` / `DEFAULT_BATCH_BYTES` directly in
+            // `dataframe_query_provider::send_next_row_batch`. We still wrap
+            // it in `SizedCoalesceBatchesExec`: with the source-side sizing
+            // the coalescer is mostly a pass-through, but it acts as a
+            // physical-plan boundary that DataFusion's optimizer relies on
+            // (removing it has been observed to confuse downstream sort /
+            // projection nodes that reference `rerun_segment_id`).
             crate::SegmentStreamExec::try_new(
                 &self.schema,
                 self.sort_index,
