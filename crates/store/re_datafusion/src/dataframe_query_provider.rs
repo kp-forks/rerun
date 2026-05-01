@@ -866,6 +866,8 @@ async fn fetch_remaining_via_grpc<T: DataframeClientAPI>(
     global_segment_order: &[String],
     output_channel: &Sender<ApiResult<SortedChunksWithSegment>>,
 ) -> ApiResult<()> {
+    let total_batches = batches.len();
+    let mut batches_completed = 0usize;
     for batch_group in batches.chunks(GRPC_BATCH_SIZE) {
         #[cfg(not(target_arch = "wasm32"))]
         {
@@ -873,7 +875,20 @@ async fn fetch_remaining_via_grpc<T: DataframeClientAPI>(
             crate::chunk_fetcher::metrics::record_grpc_no_direct_urls(bytes);
         }
         let all_chunks = fetch_batch_group_via_grpc(batch_group, client).await?;
+        batches_completed += batch_group.len();
         if !send_sorted_chunks(all_chunks, global_segment_order, output_channel).await {
+            // Consumer (CPU worker) hung up — typically because a row LIMIT was hit
+            // or the surrounding plan was cancelled. Any remaining batches will go
+            // unfetched. Log at `info` (not `debug`) so the cancellation is visible
+            // in production logs alongside the matching server-side
+            // `terminated_by="cancelled"` analytics; not a `warn` because this is
+            // expected when the caller actually wanted to stop.
+            tracing::info!(
+                total_batches,
+                batches_completed,
+                batches_skipped = total_batches.saturating_sub(batches_completed),
+                "FetchChunks IO loop short-circuited: downstream consumer closed (likely LIMIT or plan cancellation)"
+            );
             return Ok(());
         }
     }
@@ -999,6 +1014,10 @@ async fn chunk_stream_io_loop<T: DataframeClientAPI>(
 
     let http_client = reqwest::Client::new();
 
+    // `work_items` may differ from `request_batches.len()` when a batch is split
+    // into a direct part + a gRPC part. Track the count we'll actually iterate.
+    let total_tasks = work_items.len();
+
     let fetch_stream = futures::stream::iter(work_items.into_iter().enumerate())
         .map(|(task_idx, task)| {
             let http_client = http_client.clone();
@@ -1076,6 +1095,21 @@ async fn chunk_stream_io_loop<T: DataframeClientAPI>(
         // Drain contiguous completed tasks in order
         while let Some(chunks) = reorder_buf.remove(&next_to_emit) {
             if !send_sorted_chunks(chunks, &global_segment_order, &output_channel).await {
+                // Consumer hung up — record what's still outstanding so we can
+                // see in logs whether the cancel happened early or late, and how
+                // much in-flight work the `buffer_unordered` is about to drop
+                // (those streams will be RST_STREAM'd cleanly by hyper). Log at
+                // `info` so this is visible in production logs (matches the
+                // server-side `terminated_by="cancelled"` analytics).
+                tracing::info!(
+                    total_tasks,
+                    next_to_emit,
+                    in_reorder_buf = reorder_buf.len(),
+                    in_flight_or_pending = total_tasks
+                        .saturating_sub(next_to_emit)
+                        .saturating_sub(reorder_buf.len()),
+                    "FetchChunks IO loop short-circuited (hybrid path): downstream consumer closed (likely LIMIT or plan cancellation)"
+                );
                 return Ok(());
             }
             next_to_emit += 1;
