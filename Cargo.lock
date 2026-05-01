@@ -8670,6 +8670,7 @@ dependencies = [
  "re_arrow_util",
  "re_backoff",
  "re_dataframe",
+ "re_format",
  "re_log",
  "re_log_encoding",
  "re_log_types",

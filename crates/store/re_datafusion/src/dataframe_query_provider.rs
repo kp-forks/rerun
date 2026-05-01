@@ -2,7 +2,7 @@ use std::any::Any;
 use std::collections::{BTreeMap, HashSet};
 use std::fmt::Debug;
 use std::pin::Pin;
-use std::sync::{Arc, LazyLock};
+use std::sync::Arc;
 use std::task::{Context, Poll};
 
 use crate::analytics::{QueryErrorKind, TaskFetchStats};
@@ -11,7 +11,7 @@ use crate::chunk_fetcher::{
     fetch_batch_group_via_grpc, split_batch_by_direct_url,
 };
 use crate::dataframe_query_common::{
-    DataframeClientAPI, IndexValuesMap, group_chunk_infos_by_segment_id,
+    DataframeClientAPI, IndexValuesMap, force_grpc, group_chunk_infos_by_segment_id,
     prepend_string_column_schema,
 };
 use arrow::array::{Array, RecordBatch, RecordBatchOptions, StringArray, UInt64Array};
@@ -66,13 +66,6 @@ const GRPC_BATCH_SIZE: usize = 12;
 /// Max batch-level futures in-flight at once in the IO pipeline.
 /// This bounds both concurrency and the reorder buffer size.
 const IO_PIPELINE_BUFFER: usize = 24;
-
-/// Environment variable to force the client to go through the `FetchChunks` data fetching path.
-static CHUNK_STRATEGY: LazyLock<String> = LazyLock::new(|| {
-    std::env::var("RERUN_CHUNK_STRATEGY")
-        .unwrap_or_default()
-        .to_ascii_lowercase()
-});
 
 /// Helper to attach parent trace context if available.
 /// Returns a guard that must be kept alive for the duration of the traced scope.
@@ -797,11 +790,13 @@ fn split_large_segments(
     }
 
     tracing::debug!(
-        "Split large segment '{}' ({} bytes) into {} requests",
+        "Split large segment '{}' ({}) into {} requests",
         segment_id,
-        (0..chunk_info.num_rows())
-            .map(|i| chunk_sizes.value(i))
-            .sum::<u64>(),
+        re_format::format_bytes(
+            (0..chunk_info.num_rows())
+                .map(|i| chunk_sizes.value(i))
+                .sum::<u64>() as _
+        ),
         result_batches.len()
     );
 
@@ -902,7 +897,7 @@ async fn fetch_remaining_via_grpc<T: DataframeClientAPI>(
 #[tracing::instrument(
     level = "info",
     skip_all,
-    fields(n_chunks, n_batches, n_segments, fetch_strategy,)
+    fields(n_chunks, n_batches, n_segments, fetch_strategy)
 )]
 async fn chunk_stream_io_loop<T: DataframeClientAPI>(
     client: T,
@@ -912,7 +907,8 @@ async fn chunk_stream_io_loop<T: DataframeClientAPI>(
 ) -> ApiResult<()> {
     let target_size_bytes = TARGET_BATCH_SIZE_BYTES as u64;
 
-    let n_chunks = chunk_infos.len();
+    // One row per chunk in each `RecordBatch` of chunk-info.
+    let n_chunks: usize = chunk_infos.iter().map(|rb| rb.num_rows()).sum();
     let (request_batches, global_segment_order) =
         create_request_batches(chunk_infos, target_size_bytes)?;
 
@@ -928,7 +924,7 @@ async fn chunk_stream_io_loop<T: DataframeClientAPI>(
     );
 
     // Allow overriding the fetch strategy via environment variable.
-    let force_grpc = *CHUNK_STRATEGY == "grpc";
+    let force_grpc = force_grpc();
 
     // Fast path: if no batches contain direct URLs (or gRPC is forced), fetch everything via gRPC.
     if force_grpc || !request_batches.iter().any(batch_has_any_direct_urls) {
