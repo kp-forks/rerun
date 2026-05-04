@@ -70,6 +70,9 @@ pub enum ChunkPipelineError {
     #[error("Lenses error: {reason}")]
     Lenses { reason: String },
 
+    #[error("Failed to load chunks from {from}: {reason}")]
+    IndexedLoad { from: String, reason: String },
+
     #[error("{0}")]
     PythonIterator(PythonException),
 
@@ -95,7 +98,8 @@ impl From<ChunkPipelineError> for pyo3::PyErr {
             | ChunkPipelineError::Parquet { .. }
             | ChunkPipelineError::Urdf { .. }
             | ChunkPipelineError::ChunkStoreInsert { .. }
-            | ChunkPipelineError::Lenses { .. } => PyRuntimeError::new_err(err.to_string()),
+            | ChunkPipelineError::Lenses { .. }
+            | ChunkPipelineError::IndexedLoad { .. } => PyRuntimeError::new_err(err.to_string()),
         }
     }
 }

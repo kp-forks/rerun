@@ -30,6 +30,7 @@ if TYPE_CHECKING:
 
     import datafusion
 
+    from rerun.experimental import ChunkStore
     from rerun.recording import Recording
 
     from . import (
@@ -511,6 +512,17 @@ class DatasetEntry(Entry[DatasetEntryInternal]):
         from rerun.recording import Recording
 
         return Recording(self._internal.download_segment(segment_id))
+
+    def segment_store(self, segment_id: str) -> ChunkStore:
+        """
+        Open a remote segment as a lazy [`ChunkStore`][rerun.experimental.ChunkStore].
+
+        The returned store is not materialized, but can be read and processed
+        using [`ChunkStore.stream`][rerun.experimental.ChunkStore.stream].
+        """
+        from rerun.experimental import ChunkStore
+
+        return ChunkStore(self._internal.segment_store(segment_id))
 
     @with_tracing("DatasetEntry.filter_segments")
     def filter_segments(self, segment_ids: str | Sequence[str] | datafusion.DataFrame) -> DatasetView:

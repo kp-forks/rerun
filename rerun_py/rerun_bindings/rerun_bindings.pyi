@@ -1014,6 +1014,7 @@ class DatasetEntryInternal:
     # ---
 
     def download_segment(self, segment_id: str) -> RecordingInternal: ...
+    def segment_store(self, segment_id: str) -> ChunkStoreInternal: ...
 
     # ---
 

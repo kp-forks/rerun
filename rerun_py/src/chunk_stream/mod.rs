@@ -17,22 +17,22 @@
 //! - The PyO3 bindings ([`rrd_reader`], [`py_stream`]) translate between
 //!   Python objects and the Rust pipeline types.
 
-mod chunk_store;
+pub mod chunk_store;
 mod engine;
 pub mod error;
 mod mcap_reader;
 mod parquet_reader;
 mod py_stream;
-pub(crate) mod rrd_reader;
+pub mod rrd_reader;
 pub mod stream;
-pub(crate) mod urdf_tree_stream;
+pub mod urdf_tree_stream;
 
 use std::sync::Arc;
 
 use pyo3::types::{PyModule, PyModuleMethods as _};
 use pyo3::{Bound, PyResult};
 
-pub(crate) use py_stream::PyLazyChunkStreamInternal;
+pub use py_stream::PyLazyChunkStreamInternal;
 
 /// Register chunk pipeline classes into the module.
 pub fn register(m: &Bound<'_, PyModule>) -> PyResult<()> {

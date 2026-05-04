@@ -88,15 +88,16 @@ impl PyRrdReaderInternal {
             match re_log_encoding::read_rrd_footer(&mut file) {
                 Ok(Some(rrd_footer)) => {
                     let raw = pick_first_recording_manifest(&rrd_footer, &path)?;
-                    let provider =
-                        Arc::new(RrdChunkProvider::try_new(file, Arc::new(raw)).map_err(
+                    let provider = Arc::new(
+                        RrdChunkProvider::try_from_file(file, &path, Arc::new(raw)).map_err(
                             |err| ChunkPipelineError::RrdRead {
                                 path: path.clone(),
                                 reason: format!("Invalid RRD manifest: {err}"),
                             },
-                        )?);
+                        )?,
+                    );
                     let lazy = LazyStore::new(provider);
-                    Ok(PyChunkStoreInternal::indexed_rrd(lazy, path))
+                    Ok(PyChunkStoreInternal::indexed(lazy))
                 }
                 Ok(None) => {
                     // No footer (legacy RRD) — eager fallback.
