@@ -19,11 +19,7 @@ use crate::nalu::ANNEXB_NAL_START_CODE;
 use crate::{StableIndexDeque, Time, Timescale};
 
 impl VideoDataDescription {
-    pub fn load_mp4(
-        bytes: &[u8],
-        debug_name: &str,
-        source_id: re_tuid::Tuid,
-    ) -> Result<Self, VideoLoadError> {
+    pub fn load_mp4(bytes: &[u8], debug_name: &str) -> Result<Self, VideoLoadError> {
         re_tracing::profile_function!();
         let mp4 = {
             re_tracing::profile_scope!("Mp4::read_bytes");
@@ -68,8 +64,7 @@ impl VideoDataDescription {
                     decode_timestamp,
                     presentation_timestamp,
                     duration: Some(duration),
-                    source_id,
-                    byte_span,
+                    source: crate::VideoSource::Span(byte_span),
                 }));
             }
         }

@@ -172,12 +172,10 @@ fn test_video(video_type: VideoType, codec: &VideoCodec) {
             let blob_bytes =
                 datatypes::Blob::serialized_blob_as_slice(video_asset.blob.as_ref().unwrap())
                     .unwrap();
-            let tuid = re_log_types::external::re_tuid::Tuid::new();
             let video_data_description = VideoDataDescription::load_from_bytes(
                 blob_bytes,
                 MediaType::mp4().as_str(),
                 video_path.to_str().unwrap(),
-                tuid,
             )
             .unwrap();
 
@@ -210,7 +208,15 @@ fn test_video(video_type: VideoType, codec: &VideoCodec) {
                             &sample
                                 .sample()
                                 .unwrap()
-                                .get(&|_| blob_bytes, sample_idx)
+                                .get(
+                                    &|source| match source {
+                                        re_video::VideoSource::Span(span) => {
+                                            &blob_bytes[span.range_usize()]
+                                        }
+                                        re_video::VideoSource::Id { .. } => &[],
+                                    },
+                                    sample_idx,
+                                )
                                 .unwrap(),
                             &mut annexb_stream_state,
                         )
@@ -237,7 +243,15 @@ fn test_video(video_type: VideoType, codec: &VideoCodec) {
                             &sample
                                 .sample()
                                 .unwrap()
-                                .get(&|_| blob_bytes, sample_idx)
+                                .get(
+                                    &|source| match source {
+                                        re_video::VideoSource::Span(span) => {
+                                            &blob_bytes[span.range_usize()]
+                                        }
+                                        re_video::VideoSource::Id { .. } => &[],
+                                    },
+                                    sample_idx,
+                                )
                                 .unwrap(),
                             &mut annexb_stream_state,
                         )
@@ -250,7 +264,15 @@ fn test_video(video_type: VideoType, codec: &VideoCodec) {
                         let sample_bytes = sample
                             .sample()
                             .unwrap()
-                            .get(&|_| blob_bytes, sample_idx)
+                            .get(
+                                &|source| match source {
+                                    re_video::VideoSource::Span(span) => {
+                                        &blob_bytes[span.range_usize()]
+                                    }
+                                    re_video::VideoSource::Id { .. } => &[],
+                                },
+                                sample_idx,
+                            )
                             .unwrap()
                             .data;
                         (components::VideoCodec::AV1, sample_bytes)
