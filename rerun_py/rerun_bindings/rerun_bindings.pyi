@@ -1505,6 +1505,33 @@ def _get_trace_context_var() -> Any:
     Returns `None` when `perf_telemetry` is disabled.
     """
 
+def _get_tracing_session_var() -> Any:
+    """
+    Return the `ContextVar` carrying the active rerun session id.
+
+    Set by the `tracing_session()` context manager and read on every outbound
+    gRPC call to merge `rerun_session_id=<id>` into the W3C `tracestate` header.
+
+    Returns `None` when `perf_telemetry` is disabled.
+    """
+
+def _is_telemetry_active() -> bool:
+    """
+    Return `True` if the rerun telemetry stack initialized successfully.
+
+    `tracing_session()` requires this to be true; otherwise the W3C propagator
+    is not registered and the session id has no transport.
+    """
+
+def _inc_active_tracing_sessions() -> None:
+    """Increment the process-wide active-tracing-session gate. Called by `tracing_session().__enter__`."""
+
+def _dec_active_tracing_sessions() -> None:
+    """Decrement the process-wide active-tracing-session gate. Called by `tracing_session().__exit__`."""
+
+def _log_tracing_session_started(rerun_session_id: str) -> None:
+    """Emit `rerun tracing session started: <rerun_session_id>` through the Rust `tracing` stack at INFO level."""
+
 #####################################################################################################################
 ## PIPELINE APIS                                                                                                   ##
 #####################################################################################################################
