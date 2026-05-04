@@ -424,7 +424,6 @@ impl<T: DataframeClientAPI> SegmentStreamExec<T> {
 const FLUSH_BATCH_ROWS: usize = DEFAULT_BATCH_ROWS;
 const FLUSH_BATCH_BYTES: usize = DEFAULT_BATCH_BYTES as usize;
 
-#[tracing::instrument(level = "trace", skip_all)]
 async fn send_next_row_batch(
     query_handle: &QueryHandle<StorageEngine>,
     segment_id: &str,
@@ -610,7 +609,6 @@ async fn chunk_store_cpu_worker_thread(
         }
 
         /// Flush all remaining rows from the query handle, respecting the row limit.
-        #[tracing::instrument(level = "trace", skip_all, fields(segment_id = %self.segment_id))]
         async fn flush(
             self,
             projected_schema: &Arc<Schema>,

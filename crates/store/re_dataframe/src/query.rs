@@ -697,7 +697,6 @@ impl<E: StorageEngineLike> QueryHandle<E> {
     /// the chunk's time range contains the `index_value`.
     ///
     /// I.e.: it's pretty cheap already.
-    #[tracing::instrument(level = "trace", skip_all)]
     #[inline]
     pub fn seek_to_row(&self, row_idx: usize) {
         let state = self.init();
@@ -873,7 +872,6 @@ impl<E: StorageEngineLike> QueryHandle<E> {
         })
     }
 
-    #[tracing::instrument(level = "trace", skip_all)]
     pub fn _next_row(&self, store: &ChunkStore, cache: &QueryCache) -> Option<Vec<ArrowArrayRef>> {
         // re_tracing::profile_function!(); // too many and short-lived
 

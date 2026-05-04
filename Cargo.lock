@@ -8396,7 +8396,6 @@ dependencies = [
  "re_types_core",
  "similar-asserts",
  "thiserror 2.0.18",
- "tracing",
 ]
 
 [[package]]
