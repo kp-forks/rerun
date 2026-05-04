@@ -11,7 +11,7 @@ from inline_snapshot import snapshot as inline_snapshot
 from rerun.experimental import (
     ChunkStore,
     LazyChunkStream,
-    OptimizationSettings,
+    OptimizationProfile,
     RrdReader,
 )
 
@@ -22,24 +22,34 @@ if TYPE_CHECKING:
 
     from syrupy import SnapshotAssertion
 
+FRAGMENTED_NUM_ROWS = 5_000
+
 
 @pytest.fixture(scope="session")
 def fragmented_rrd_path(tmp_path_factory: pytest.TempPathFactory) -> Path:
-    """RRD with many tiny single-row chunks, ideal for compaction testing."""
+    """
+    RRD with `FRAGMENTED_NUM_ROWS` sorted scalar rows on /sensor, one chunk per row.
 
+    Row count is sized to be larger than LIVE's `max_rows=4096` ceiling and
+    smaller than DATAPLATFORM's `max_rows=65_536`, so the splitter behaves
+    visibly differently under the two profiles.
+
+    Uses `ChunkBatcherConfig.ALWAYS()` so the microbatcher cannot coalesce
+    sends behind our back: each `send_columns` becomes its own chunk.
+    """
     rrd_path = tmp_path_factory.mktemp("compact") / "fragmented.rrd"
-
-    with rr.RecordingStream("rerun_example_compact_test", recording_id="compact-test-id") as rec:
+    with rr.RecordingStream(
+        "rerun_example_compact_test",
+        recording_id="compact-test-id",
+        batcher_config=rr.ChunkBatcherConfig.ALWAYS(),
+    ) as rec:
         rec.save(rrd_path)
-
-        # 20 individual send_columns calls -> 20 separate chunks for the same entity
-        for i in range(20):
+        for i in range(FRAGMENTED_NUM_ROWS):
             rec.send_columns(
                 "/sensor",
                 indexes=[rr.TimeColumn("frame", sequence=[i])],
                 columns=rr.Scalars.columns(scalars=[float(i)]),
             )
-
     return rrd_path
 
 
@@ -221,14 +231,14 @@ def test_collect_default_single_pass_compacts(fragmented_rrd_path: Path) -> None
     default = reader.stream().collect()
     # Without any optimization, many tiny single-row chunks still get merged by
     # the natural insert-time compaction path.
-    assert len(default.stream().to_chunks()) < 20
+    assert len(default.stream().to_chunks()) < FRAGMENTED_NUM_ROWS
 
 
 def test_collect_optimize_further_reduces(fragmented_rrd_path: Path) -> None:
-    """Explicit optimize=OptimizationSettings() reduces chunk count further."""
+    """Explicit optimize=OptimizationProfile() reduces chunk count further."""
     reader = RrdReader(fragmented_rrd_path)
     default = reader.stream().collect()  # single-pass only
-    optimized = reader.stream().collect(optimize=OptimizationSettings())
+    optimized = reader.stream().collect(optimize=OptimizationProfile())
 
     assert len(optimized.stream().to_chunks()) <= len(default.stream().to_chunks())
 
@@ -237,7 +247,7 @@ def test_collect_preserves_schema(fragmented_rrd_path: Path) -> None:
     """Optimization preserves the schema."""
     reader = RrdReader(fragmented_rrd_path)
     default = reader.stream().collect()
-    optimized = reader.stream().collect(optimize=OptimizationSettings())
+    optimized = reader.stream().collect(optimize=OptimizationProfile())
     assert default.schema() == optimized.schema()
 
 
@@ -246,9 +256,51 @@ def test_collect_preserves_row_count(fragmented_rrd_path: Path) -> None:
     reader = RrdReader(fragmented_rrd_path)
     default_rows = sum(c.num_rows for c in reader.stream().collect().stream().to_chunks())
     optimized_rows = sum(
-        c.num_rows for c in reader.stream().collect(optimize=OptimizationSettings()).stream().to_chunks()
+        c.num_rows for c in reader.stream().collect(optimize=OptimizationProfile()).stream().to_chunks()
     )
     assert optimized_rows == default_rows
+
+
+def test_collect_with_dataplatform_profile_uses_dataplatform_thresholds(fragmented_rrd_path: Path) -> None:  # NOLINT
+    """
+    End-to-end plumbing: DATAPLATFORM's larger thresholds reach the resulting ChunkStore.
+
+    Proves the precedence chain `OptimizationProfile.DATAPLATFORM → PyO3 → ChunkStoreConfig`
+    forwards concrete values (no silent fallback to DEFAULT/LIVE) by checking
+    that the `chunk_max_rows` threshold is *enforced* on the /sensor chunks:
+
+    - LIVE caps every chunk at 4096 rows.
+    - DATAPLATFORM lets at least one chunk hold more than 4096 rows. If
+      DATAPLATFORM's value did not reach the store, splitting would have
+      capped it at 4096 too.
+
+    This avoids relying on compaction heuristics converging to a specific
+    chunk count: it only relies on the splitter respecting the configured
+    ceiling, which is a hard invariant.
+    """
+    reader = RrdReader(fragmented_rrd_path)
+    live = reader.stream().collect(optimize=OptimizationProfile.LIVE)
+    data_platform = reader.stream().collect(optimize=OptimizationProfile.DATAPLATFORM)
+
+    def sensor_rows(s: ChunkStore) -> list[int]:
+        return [c.num_rows for c in s.stream().to_chunks() if str(c.entity_path) == "/sensor"]
+
+    live_sensor = sensor_rows(live)
+    data_platform_sensor = sensor_rows(data_platform)
+
+    # Schema and total /sensor row count preserved across profiles.
+    assert live.schema() == data_platform.schema()
+    assert sum(live_sensor) == sum(data_platform_sensor) == FRAGMENTED_NUM_ROWS
+
+    # LIVE enforces its 4096 row ceiling on every chunk.
+    assert all(n <= 4096 for n in live_sensor), f"LIVE must respect max_rows=4096: {live_sensor}"
+
+    # DATAPLATFORM's higher 65_536 ceiling lets at least one chunk exceed 4096
+    # rows, proving the DATAPLATFORM value reached the store. (If DATAPLATFORM's
+    # value were lost, the splitter would have capped chunks at 4096 just like LIVE.)
+    assert any(n > 4096 for n in data_platform_sensor), (
+        f"expected at least one chunk >4096 rows under DATAPLATFORM profile, got {data_platform_sensor}"
+    )
 
 
 def test_collect_optimize_video_stream_summary(tmp_path_factory: pytest.TempPathFactory) -> None:
@@ -265,9 +317,9 @@ def test_collect_optimize_video_stream_summary(tmp_path_factory: pytest.TempPath
         reader = RrdReader(rrd_path)
 
         # Optimize without GoP alignment.
-        without_gop = reader.stream().collect(optimize=OptimizationSettings(gop_batching=False))
+        without_gop = reader.stream().collect(optimize=OptimizationProfile(gop_batching=False))
         # Re-optimize with GoP batching on top of the already-optimized store.
-        with_gop = without_gop.stream().collect(optimize=OptimizationSettings(gop_batching=True))
+        with_gop = without_gop.stream().collect(optimize=OptimizationProfile(gop_batching=True))
 
         sections.append(f"=== {filename} ===")
         sections.append(report("before_gop", num_gops, without_gop))

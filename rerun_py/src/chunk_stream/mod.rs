@@ -30,7 +30,7 @@ pub mod urdf_tree_stream;
 use std::sync::Arc;
 
 use pyo3::types::{PyModule, PyModuleMethods as _};
-use pyo3::{Bound, PyResult};
+use pyo3::{Bound, PyResult, wrap_pyfunction};
 
 pub use py_stream::PyLazyChunkStreamInternal;
 
@@ -42,6 +42,10 @@ pub fn register(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<py_stream::PyLazyChunkStreamInternal>()?;
     m.add_class::<py_stream::PyLazyChunkStreamIterator>()?;
     m.add_class::<chunk_store::PyChunkStoreInternal>()?;
+    m.add_function(wrap_pyfunction!(
+        py_stream::_optimization_profile_values,
+        m
+    )?)?;
     Ok(())
 }
 

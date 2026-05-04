@@ -518,7 +518,7 @@ SECTION_TABLE: Final[list[Section]] = [
             "Lens",
             "McapReader",
             "MutateLens",
-            "OptimizationSettings",
+            "OptimizationProfile",
             "ParquetReader",
             "RrdReader",
             "Selector",

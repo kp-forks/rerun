@@ -588,35 +588,40 @@ Examples:
 >
 > In directory mirror mode (when any input is a directory), this must be set and is treated as the output directory root: the input folder structure is mirrored underneath it, with each `.rrd`/`.rbl` file optimized independently.
 
+* `--profile <PROFILE>`
+> Optimization profile to start from.
+>
+> Per-knob flags and `RERUN_CHUNK_MAX_*` env vars override the profile's values. `RERUN_STORE_ENABLE_CHANGELOG` is ignored by this command — `rerun rrd optimize` is always headless.
+>
+> [Default: `dataplatform`]
+
 * `--max-size <MAX_SIZE>`
 > Threshold after which a Chunk cannot be compacted any further.
 >
 > Accepts a size string with a unit suffix, e.g. `2MiB`, `512KiB`, `1GB`, `1024B`. Both binary (`KiB`/`MiB`/`GiB`/`TiB`) and decimal (`kB`/`MB`/`GB`/`TB`) units are accepted.
 >
-> Overrides `RERUN_CHUNK_MAX_BYTES` if set.
+> Overrides the profile's value and `RERUN_CHUNK_MAX_BYTES` if set.
 
 * `--max-rows <MAX_ROWS>`
 > What is the threshold, in rows, after which a Chunk cannot be compacted any further?
 >
-> Overrides `RERUN_CHUNK_MAX_ROWS` if set.
+> Overrides the profile's value and `RERUN_CHUNK_MAX_ROWS` if set.
 
 * `--max-rows-if-unsorted <MAX_ROWS_IF_UNSORTED>`
 > What is the threshold, in rows, after which a Chunk cannot be compacted any further?
 >
 > This specifically applies to _non_ time-sorted chunks.
 >
-> Overrides `RERUN_CHUNK_MAX_ROWS_IF_UNSORTED` if set.
+> Overrides the profile's value and `RERUN_CHUNK_MAX_ROWS_IF_UNSORTED` if set.
 
 * `--num-pass <NUM_EXTRA_PASSES>`
-> Configures the number of extra compaction passes to run on the data.
+> Configures the number of extra compaction passes to run on the data. Overrides the profile's value. Default per profile: 50.
 >
 > Compaction in Rerun is an iterative, convergent process: every single pass will improve the quality of the compaction (with diminishing returns), until it eventually converges into a stable state. The more passes, the better the compaction quality.
 >
 > Under the hood, you can think of it as a kind of clustering algorithm: every incoming chunk finds the most appropriate chunk to merge into, thereby creating a new cluster, which is itself just a bigger chunk. On the next pass, these new clustered chunks will themselves look for other clusters to merge into, yielding even bigger clusters, which again are also just chunks. And so on and so forth.
 >
 > If/When the data reaches a stable optimum, the computation will stop immediately, regardless of how many passes are left.
->
-> [Default: `50`]
 
 * `--continue-on-error <CONTINUE_ON_ERROR>`
 > If set, will try to proceed even in the face of IO and/or decoding errors in the input data.
@@ -637,7 +642,7 @@ Examples:
 >
 > This keeps "thick" columns (images, videos, blobs) out of the same chunk as "thin" columns (scalars, transforms, text), so the viewer can fetch just the thin data without dragging along the thick payload. Components belonging to the same archetype are always kept together.
 >
-> A good starting value is 10.0. If unset, no thick/thin split is performed.
+> A good starting value is 10.0. If unset, the profile's value is used.
 
 ## rerun rrd print
 

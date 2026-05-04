@@ -3,7 +3,7 @@ use std::io::{IsTerminal as _, Write as _};
 use anyhow::Context as _;
 use itertools::Either;
 use re_byte_size::SizeBytes as _;
-use re_chunk_store::{ChunkStoreConfig, CompactionOptions, IsStartOfGop};
+use re_chunk_store::{ChunkStoreConfig, CompactionOptions, IsStartOfGop, OptimizationProfile};
 use re_entity_db::EntityDb;
 use re_log_types::StoreId;
 use re_sdk::StoreKind;
@@ -74,6 +74,24 @@ fn parse_size(s: &str) -> Result<u64, String> {
 
 // ---
 
+#[derive(Debug, Clone, Copy, clap::ValueEnum)]
+pub enum ProfileArg {
+    /// Small chunks tuned for the live Viewer workflow.
+    Live,
+
+    /// Larger chunks tuned for Data Platform query and streaming.
+    Dataplatform,
+}
+
+impl ProfileArg {
+    fn to_profile(self) -> OptimizationProfile {
+        match self {
+            Self::Live => OptimizationProfile::LIVE,
+            Self::Dataplatform => OptimizationProfile::DATAPLATFORM,
+        }
+    }
+}
+
 #[derive(Debug, Clone, clap::Parser)]
 pub struct OptimizeCommand {
     /// Paths to read from. Reads from standard input if none are specified.
@@ -90,18 +108,26 @@ pub struct OptimizeCommand {
     #[arg(short = 'o', long = "output", value_name = "dst.(rrd|rbl)")]
     path_to_output_rrd: Option<String>,
 
+    /// Optimization profile to start from.
+    ///
+    /// Per-knob flags and `RERUN_CHUNK_MAX_*` env vars override the profile's
+    /// values. `RERUN_STORE_ENABLE_CHANGELOG` is ignored by this command —
+    /// `rerun rrd optimize` is always headless.
+    #[arg(long = "profile", value_enum, default_value_t = ProfileArg::Dataplatform)]
+    profile: ProfileArg,
+
     /// Threshold after which a Chunk cannot be compacted any further.
     ///
     /// Accepts a size string with a unit suffix, e.g. `2MiB`, `512KiB`, `1GB`, `1024B`.
     /// Both binary (`KiB`/`MiB`/`GiB`/`TiB`) and decimal (`kB`/`MB`/`GB`/`TB`) units are accepted.
     ///
-    /// Overrides `RERUN_CHUNK_MAX_BYTES` if set.
+    /// Overrides the profile's value and `RERUN_CHUNK_MAX_BYTES` if set.
     #[arg(long = "max-size", value_parser = parse_size)]
     max_size: Option<u64>,
 
     /// What is the threshold, in rows, after which a Chunk cannot be compacted any further?
     ///
-    /// Overrides `RERUN_CHUNK_MAX_ROWS` if set.
+    /// Overrides the profile's value and `RERUN_CHUNK_MAX_ROWS` if set.
     #[arg(long = "max-rows")]
     max_rows: Option<u64>,
 
@@ -109,11 +135,12 @@ pub struct OptimizeCommand {
     ///
     /// This specifically applies to _non_ time-sorted chunks.
     ///
-    /// Overrides `RERUN_CHUNK_MAX_ROWS_IF_UNSORTED` if set.
+    /// Overrides the profile's value and `RERUN_CHUNK_MAX_ROWS_IF_UNSORTED` if set.
     #[arg(long = "max-rows-if-unsorted")]
     max_rows_if_unsorted: Option<u64>,
 
     /// Configures the number of extra compaction passes to run on the data.
+    /// Overrides the profile's value. Default per profile: 50.
     ///
     /// Compaction in Rerun is an iterative, convergent process: every single pass will improve the
     /// quality of the compaction (with diminishing returns), until it eventually converges into a
@@ -128,8 +155,8 @@ pub struct OptimizeCommand {
     ///
     /// If/When the data reaches a stable optimum, the computation will stop immediately, regardless of
     /// how many passes are left.
-    #[arg(long = "num-pass", default_value_t = 50)]
-    num_extra_passes: u32,
+    #[arg(long = "num-pass")]
+    num_extra_passes: Option<u32>,
 
     /// If set, will try to proceed even in the face of IO and/or decoding errors in the input data.
     #[clap(long = "continue-on-error", default_value_t = false)]
@@ -156,7 +183,7 @@ pub struct OptimizeCommand {
     /// thin data without dragging along the thick payload. Components belonging to
     /// the same archetype are always kept together.
     ///
-    /// A good starting value is 10.0. If unset, no thick/thin split is performed.
+    /// A good starting value is 10.0. If unset, the profile's value is used.
     #[arg(long = "split-size-ratio")]
     split_size_ratio: Option<f64>,
 }
@@ -166,6 +193,7 @@ impl OptimizeCommand {
         let Self {
             path_to_input_rrds,
             path_to_output_rrd,
+            profile,
             max_size,
             max_rows,
             max_rows_if_unsorted,
@@ -182,10 +210,12 @@ impl OptimizeCommand {
             );
         }
 
-        let mut store_config = ChunkStoreConfig::from_env().unwrap_or_default();
-        // NOTE: We're doing headless processing, there's no point in running subscribers, it will just
-        // (massively) slow us down.
-        store_config.enable_changelog = false;
+        let profile = profile.to_profile();
+
+        // Seed from profile, then env, then CLI flags. Force enable_changelog=false
+        // last (optimize is headless; we never want subscribers).
+        let mut store_config = profile.to_chunk_store_config();
+        store_config = store_config.apply_env()?;
 
         if let Some(max_size) = max_size {
             store_config.chunk_max_bytes = *max_size;
@@ -197,19 +227,23 @@ impl OptimizeCommand {
             store_config.chunk_max_rows_if_unsorted = *max_rows_if_unsorted;
         }
 
+        store_config.enable_changelog = false;
+
+        let num_extra_passes = num_extra_passes.unwrap_or(profile.num_extra_passes);
+
+        let gop_batching = !*no_rebatch_videos && profile.gop_batching;
+
+        let split_size_ratio = split_size_ratio.or(profile.split_size_ratio);
+
         let is_start_of_gop: IsStartOfGop = std::sync::Arc::new(|data, codec| {
             re_video::is_start_of_gop(data, codec.into()).map_err(|err| anyhow::anyhow!(err))
         });
 
         let compaction_options = CompactionOptions {
             config: store_config.clone(),
-            num_extra_passes: Some(*num_extra_passes as usize),
-            is_start_of_gop: if *no_rebatch_videos {
-                None
-            } else {
-                Some(is_start_of_gop)
-            },
-            split_size_ratio: *split_size_ratio,
+            num_extra_passes: Some(num_extra_passes as usize),
+            is_start_of_gop: gop_batching.then_some(is_start_of_gop),
+            split_size_ratio,
         };
 
         // Directory mirror mode: if any input is a directory, recursively expand it

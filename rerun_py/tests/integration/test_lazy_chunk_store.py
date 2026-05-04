@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING
 import pytest
 import rerun as rr
 from rerun.experimental import (
-    OptimizationSettings,
+    OptimizationProfile,
     RrdReader,
 )
 
@@ -89,7 +89,7 @@ def test_lazy_store_filter(lazy_rrd_path: Path) -> None:
 def test_lazy_store_collect_optimize(lazy_rrd_path: Path) -> None:
     """Collecting a lazy store with optimization settings produces a materialized store."""
     store = RrdReader(lazy_rrd_path).store()
-    optimized = store.stream().collect(optimize=OptimizationSettings())
+    optimized = store.stream().collect(optimize=OptimizationProfile())
 
     chunks = optimized.stream().to_chunks()
     assert len(chunks) > 0

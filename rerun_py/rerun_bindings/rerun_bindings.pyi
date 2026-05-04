@@ -253,6 +253,18 @@ def load_recording(path_to_rrd: str | os.PathLike[str]) -> RecordingInternal:
 def load_archive(path_to_rrd: str | os.PathLike[str]) -> RRDArchiveInternal:
     """Load a rerun archive from an RRD file."""
 
+def _optimization_profile_values(name: str) -> dict[str, object]:
+    """
+    Test-only: return a dict of the Rust `OptimizationProfile::<NAME>` field values.
+
+    Used by the Python parity test to confirm that
+    `OptimizationProfile.{LIVE,DATAPLATFORM}` on the Python side stays in sync
+    with the Rust constants this module forwards into `ChunkStoreConfig` /
+    `CompactionOptions` above.
+
+    Names: `"LIVE"`, `"DATAPLATFORM"`.
+    """
+
 # AI generated stubs for `PyRecordingStream` related class and functions
 # TODO(#9187): this will be entirely replaced when `RecordingStream` is itself written in Rust
 class PyRecordingStream:

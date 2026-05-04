@@ -100,9 +100,14 @@ Lens::mutate("component", ".field").build()
 
 To output columns to multiple entities from a single component, multiple lenses can be registered for the same input component.
 
-## `rerun rrd compact` renamed to `rerun rrd optimize`
+## `rerun rrd compact` renamed to `rerun rrd optimize`, has profiles and new defaults
 
 `rerun rrd compact` is now `rerun rrd optimize`.
+
+A new `--profile` argument has been added to opt to known good values.
+Two profiles are available: `live` (optimized for the live Viewer workflow, same as previous defaults) and `dataplatform` (optimized for querying and streaming from the Data Platform). <!-- NOLINT -->
+
+By default, the `dataplatform` profile is now used. Use `--profile live` to keep the previous behavior. <!-- NOLINT -->
 
 ## URDF importer transform entity
 
