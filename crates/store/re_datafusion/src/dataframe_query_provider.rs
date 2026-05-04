@@ -456,22 +456,25 @@ async fn send_next_row_batch(
     let mut total_rows = 0usize;
     let mut total_bytes = 0usize;
 
-    while total_rows < max_rows_this_batch && total_bytes < FLUSH_BATCH_BYTES {
-        let Some(row) = query_handle.next_row() else {
-            break;
-        };
-        if row.is_empty() {
-            // Should not happen
-            break;
+    {
+        re_tracing::profile_scope!("accumulate_rows");
+        while total_rows < max_rows_this_batch && total_bytes < FLUSH_BATCH_BYTES {
+            let Some(row) = query_handle.next_row() else {
+                break;
+            };
+            if row.is_empty() {
+                // Should not happen
+                break;
+            }
+            if num_fields != row.len() {
+                return Err(ApiError::internal(
+                    "Unexpected number of columns returned from query",
+                ));
+            }
+            total_rows += row[0].len();
+            total_bytes += row.iter().map(|a| a.get_array_memory_size()).sum::<usize>();
+            row_groups.push(row);
         }
-        if num_fields != row.len() {
-            return Err(ApiError::internal(
-                "Unexpected number of columns returned from query",
-            ));
-        }
-        total_rows += row[0].len();
-        total_bytes += row.iter().map(|a| a.get_array_memory_size()).sum::<usize>();
-        row_groups.push(row);
     }
 
     if row_groups.is_empty() {
@@ -480,16 +483,25 @@ async fn send_next_row_batch(
 
     // Concatenate per-column arrays across the accumulated row groups.
     let mut columns: Vec<ArrayRef> = Vec::with_capacity(num_fields + 1);
-    for col_idx in 0..num_fields {
-        let parts: Vec<&dyn Array> = row_groups.iter().map(|r| r[col_idx].as_ref()).collect();
-        let combined = concat_arrays(&parts).map_err(|err| {
-            ApiError::deserialization_with_source(
-                None,
-                err,
-                "concatenating per-column arrays for batched output",
+    {
+        re_tracing::profile_scope!(
+            "concat_columns",
+            format!(
+                "num_fields={num_fields} num_row_groups={}",
+                row_groups.len()
             )
-        })?;
-        columns.push(combined);
+        );
+        for col_idx in 0..num_fields {
+            let parts: Vec<&dyn Array> = row_groups.iter().map(|r| r[col_idx].as_ref()).collect();
+            let combined = concat_arrays(&parts).map_err(|err| {
+                ApiError::deserialization_with_source(
+                    None,
+                    err,
+                    "concatenating per-column arrays for batched output",
+                )
+            })?;
+            columns.push(combined);
+        }
     }
 
     // Single segment-id `StringArray` of length `total_rows` for the whole batch.
@@ -497,29 +509,30 @@ async fn send_next_row_batch(
         Arc::new(StringArray::from(vec![segment_id.to_owned(); total_rows])) as ArrayRef;
     columns.insert(0, sid_array);
 
-    let batch_schema = Arc::new(prepend_string_column_schema(
-        &query_schema,
-        ScanSegmentTableResponse::FIELD_SEGMENT_ID,
-    ));
+    let output_batch = {
+        re_tracing::profile_scope!("build_and_align_batch");
+        let batch_schema = Arc::new(prepend_string_column_schema(
+            &query_schema,
+            ScanSegmentTableResponse::FIELD_SEGMENT_ID,
+        ));
 
-    let batch = RecordBatch::try_new_with_options(
-        batch_schema,
-        columns,
-        &RecordBatchOptions::default().with_row_count(Some(total_rows)),
-    )
-    .map_err(|err| {
-        ApiError::deserialization_with_source(
-            None,
-            err,
-            "building output record batch from chunk-store rows",
+        let batch = RecordBatch::try_new_with_options(
+            batch_schema,
+            columns,
+            &RecordBatchOptions::default().with_row_count(Some(total_rows)),
         )
-    })?;
+        .map_err(|err| {
+            ApiError::deserialization_with_source(
+                None,
+                err,
+                "building output record batch from chunk-store rows",
+            )
+        })?;
 
-    // align the batch to the target schema, this should be always possible
-    // by construction.
-    let output_batch = align_record_batch_to_schema(&batch, target_schema).map_err(|err| {
-        ApiError::internal_with_source(None, err, "DataFusion schema mismatch error")
-    })?;
+        align_record_batch_to_schema(&batch, target_schema).map_err(|err| {
+            ApiError::internal_with_source(None, err, "DataFusion schema mismatch error")
+        })?
+    };
 
     // Slice the batch to respect the row limit. We pre-cap `max_rows_this_batch`
     // by the limit, but a single `next_row()` call can return more than one row
@@ -729,6 +742,7 @@ fn create_request_batches(
     chunk_infos: Vec<RecordBatch>,
     target_size_bytes: u64,
 ) -> ApiResult<BatchingResult> {
+    re_tracing::profile_function!();
     let merge_err = |err: arrow::error::ArrowError, ctx: &'static str| {
         ApiError::deserialization_with_source(None, err, ctx)
     };
@@ -808,6 +822,7 @@ fn split_large_segments(
     target_size: u64,
     chunk_sizes: &UInt64Array,
 ) -> ApiResult<Vec<RecordBatch>> {
+    re_tracing::profile_function!();
     let take_err = |err: arrow::error::ArrowError| {
         ApiError::deserialization_with_source(None, err, "slicing large segment into sub-batches")
     };
@@ -1208,6 +1223,8 @@ impl<T: DataframeClientAPI> ExecutionPlan for SegmentStreamExec<T> {
         partition: usize,
         _context: Arc<TaskContext>,
     ) -> datafusion::common::Result<SendableRecordBatchStream> {
+        re_tracing::profile_function!();
+
         #[cfg(not(target_arch = "wasm32"))]
         let _trace_guard = attach_trace_context(self.trace_headers.as_ref());
         let execute_span = tracing::info_span!("execute", partition);
@@ -1216,25 +1233,27 @@ impl<T: DataframeClientAPI> ExecutionPlan for SegmentStreamExec<T> {
         let (chunk_tx, chunk_rx) = tokio::sync::mpsc::channel(CPU_THREAD_IO_CHANNEL_SIZE);
 
         let random_state = ahash::RandomState::with_seeds(0, 0, 0, 0);
-        let chunk_infos = self
-            .chunk_info
-            .iter()
-            .filter(|(segment_id, _)| {
-                let hash_value = segment_id.hash_one(&random_state) as usize;
-                hash_value % self.target_partitions == partition
-            })
-            // we end up with 1 batch per (rerun) segment. Order is important and must be preserved.
-            // See SegmentStreamExec::try_new for details on ordering.
-            .map(|(_, batches)| re_arrow_util::concat_polymorphic_batches(batches))
-            .collect::<Result<Vec<_>, _>>()
-            .map_err(|err| {
-                ApiError::deserialization_with_source(
-                    None,
-                    err,
-                    "concatenating chunk-info batches per segment",
-                )
-                .into_df_error()
-            })?;
+        let chunk_infos = {
+            re_tracing::profile_scope!("concat_chunk_infos_per_segment");
+            self.chunk_info
+                .iter()
+                .filter(|(segment_id, _)| {
+                    let hash_value = segment_id.hash_one(&random_state) as usize;
+                    hash_value % self.target_partitions == partition
+                })
+                // we end up with 1 batch per (rerun) segment. Order is important and must be preserved.
+                // See SegmentStreamExec::try_new for details on ordering.
+                .map(|(_, batches)| re_arrow_util::concat_polymorphic_batches(batches))
+                .collect::<Result<Vec<_>, _>>()
+                .map_err(|err| {
+                    ApiError::deserialization_with_source(
+                        None,
+                        err,
+                        "concatenating chunk-info batches per segment",
+                    )
+                    .into_df_error()
+                })?
+        };
 
         // if no chunks match this datafusion partition, return an empty stream
         if chunk_infos.is_empty() {

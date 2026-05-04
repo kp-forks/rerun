@@ -248,6 +248,7 @@ impl Chunk {
 impl Chunk {
     #[inline]
     pub fn from_arrow_msg(msg: &re_log_types::ArrowMsg) -> ChunkResult<Self> {
+        re_tracing::profile_function!();
         let re_log_types::ArrowMsg {
             chunk_id: _,
             batch,

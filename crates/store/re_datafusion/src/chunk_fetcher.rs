@@ -164,6 +164,7 @@ pub fn batch_has_any_direct_urls(batch: &RecordBatch) -> bool {
 pub fn split_batch_by_direct_url(
     batch: &RecordBatch,
 ) -> (Option<RecordBatch>, Option<RecordBatch>) {
+    re_tracing::profile_function!();
     use arrow::compute::{filter_record_batch, is_not_null, not};
 
     let Some(url_col) = batch.column_by_name(QueryDatasetResponse::FIELD_DIRECT_URL) else {
@@ -456,6 +457,7 @@ fn calculate_adaptive_concurrency(ranges: &[(u64, u64)]) -> usize {
 
 /// Decode a single chunk from raw RRD bytes (protobuf-encoded `ArrowMsg`).
 fn decode_chunk_from_bytes(bytes: &[u8]) -> Result<(Chunk, Option<String>), DirectFetchError> {
+    re_tracing::profile_function!();
     use re_log_encoding::Decodable;
     let raw_msg =
         <Option<re_protos::log_msg::v1alpha1::log_msg::Msg> as Decodable>::from_rrd_bytes(bytes)

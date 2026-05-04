@@ -241,6 +241,7 @@ pub fn fetch_chunks_response_to_chunk_and_segment_id(
                 r.chunks
                     .into_iter()
                     .map(|arrow_msg| {
+                        re_tracing::profile_scope!("fetch_chunks_response_to_chunk_and_segment_id");
                         let segment_id = arrow_msg.store_id.clone().map(|id| id.recording_id);
 
                         use re_log_encoding::ToApplication as _;

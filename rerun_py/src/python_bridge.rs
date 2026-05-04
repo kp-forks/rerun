@@ -112,6 +112,30 @@ fn global_web_viewer_server()
     WEB_HANDLE.get_or_init(Default::default).lock()
 }
 
+/// Static holding the puffin profiler so it stays alive for the lifetime of the SDK.
+///
+/// Wrapped in `Option` so [`shutdown_puffin_profiler`] can take and drop it explicitly,
+/// flushing any pending frames to the connected `puffin_viewer`.
+fn puffin_profiler_slot() -> &'static parking_lot::Mutex<Option<re_tracing::Profiler>> {
+    static PROFILER: OnceLock<parking_lot::Mutex<Option<re_tracing::Profiler>>> = OnceLock::new();
+    PROFILER.get_or_init(|| parking_lot::Mutex::new(None))
+}
+
+/// Start a `puffin` profiling server and spawn `puffin_viewer` to connect to it.
+fn init_puffin_profiler() {
+    let mut slot = puffin_profiler_slot().lock();
+    slot.get_or_insert_with(|| {
+        let mut profiler = re_tracing::Profiler::default();
+        profiler.start();
+        profiler
+    });
+}
+
+/// Flush the last profiling scopes to the puffin viewer.
+fn shutdown_puffin_profiler() {
+    puffin_profiler_slot().lock().take();
+}
+
 /// Initialize the performance telemetry stack in a static so it can keep running for the entire
 /// lifetime of the SDK.
 ///
@@ -164,6 +188,10 @@ fn rerun_bindings(py: Python<'_>, m: &Bound<'_, PyModule>) -> PyResult<()> {
 
     #[cfg(all(not(target_arch = "wasm32"), feature = "perf_telemetry"))]
     let _telemetry = init_perf_telemetry();
+
+    if re_log::env_var_is_truthy("RERUN_PUFFIN") {
+        init_puffin_profiler();
+    }
 
     // These two components are necessary for imports to work
     m.add_class::<PyMemorySinkStorage>()?;
@@ -691,6 +719,8 @@ fn shutdown(py: Python<'_>) {
 
     #[cfg(all(not(target_arch = "wasm32"), feature = "perf_telemetry"))]
     init_perf_telemetry().shutdown();
+
+    shutdown_puffin_profiler();
 }
 
 // --- Recordings ---

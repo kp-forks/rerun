@@ -875,7 +875,7 @@ impl<E: StorageEngineLike> QueryHandle<E> {
 
     #[tracing::instrument(level = "trace", skip_all)]
     pub fn _next_row(&self, store: &ChunkStore, cache: &QueryCache) -> Option<Vec<ArrowArrayRef>> {
-        re_tracing::profile_function!();
+        // re_tracing::profile_function!(); // too many and short-lived
 
         /// Temporary state used to resolve the streaming join for the current iteration.
         #[derive(Debug)]
