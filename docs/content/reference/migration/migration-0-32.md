@@ -109,6 +109,20 @@ Two profiles are available: `live` (optimized for the live Viewer workflow, same
 
 By default, the `dataplatform` profile is now used. Use `--profile live` to keep the previous behavior. <!-- NOLINT -->
 
+## `DatasetEntry.register` requires a sequence of URIs (Python)
+
+`DatasetEntry.register` no longer accepts a single URI string for `recording_uri`.
+Pass a sequence of URIs instead, and prefer batching many URIs into a single `register` call rather than calling `register` repeatedly in a loop (which is much slower).
+
+Old single-string invocations still work at runtime but emit a `DeprecationWarning`.
+
+```diff
+- dataset.register(url, layer_name="base")
++ dataset.register([url], layer_name="base")
+```
+
+`layer_name` is unchanged: pass a single string to apply one layer to all recordings, or a sequence matching the length of `recording_uri`.
+
 ## URDF importer transform entity
 
 The [URDF importer](../../howto/logging-and-ingestion/urdf.md) now loads the static transforms of the model to the `/tf_static` entity by default.

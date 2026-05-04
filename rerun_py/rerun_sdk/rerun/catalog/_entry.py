@@ -205,7 +205,9 @@ class DatasetEntry(Entry[DatasetEntryInternal]):
         if blueprint_dataset is None:
             raise LookupError("a blueprint dataset is not configured for this dataset")
 
-        segment_id = blueprint_dataset.register(uri, on_duplicate=OnDuplicateSegmentLayer.REPLACE).wait().segment_ids[0]
+        segment_id = (
+            blueprint_dataset.register([uri], on_duplicate=OnDuplicateSegmentLayer.REPLACE).wait().segment_ids[0]
+        )
 
         if set_default:
             self.set_default_blueprint(segment_id)
@@ -369,7 +371,8 @@ class DatasetEntry(Entry[DatasetEntryInternal]):
 
     def register(
         self,
-        recording_uri: str | Sequence[str],
+        # NOTE: this can't be Sequence[str], because `str` IS a `Sequence[str]`, and we would thus get no helpful typechecking
+        recording_uri: list[str],
         *,
         layer_name: str | Sequence[str] = "base",
         on_duplicate: OnDuplicateSegmentLayer = OnDuplicateSegmentLayer.ERROR,
@@ -380,10 +383,13 @@ class DatasetEntry(Entry[DatasetEntryInternal]):
         This method initiates the registration of recordings to the dataset, and returns
         a handle that can be used to wait for completion or iterate over results.
 
+        Prefer batching many URIs into a single `register` call rather than calling
+        `register` repeatedly in a loop, which is much slower.
+
         Parameters
         ----------
         recording_uri:
-            The URI(s) of the RRD(s) to register. Can be a single URI string or a sequence of URIs.
+            The URIs of the RRDs to register, as a sequence of strings.
 
         layer_name:
             The layer(s) to which the recordings will be registered to.
@@ -401,9 +407,18 @@ class DatasetEntry(Entry[DatasetEntryInternal]):
             A handle to track and wait on the registration tasks.
 
         """
+        from rerun.error_utils import _send_warning_or_raise
+
         from ._registration_handle import RegistrationHandle
 
         if isinstance(recording_uri, str):
+            _send_warning_or_raise(
+                "`DatasetEntry.register` was called with a single string for `recording_uri`. "
+                "This is deprecated: pass a sequence of URIs instead, and prefer batching "
+                "many URIs into a single call rather than calling `register` in a loop.",
+                depth_to_user_code=2,
+                warning_type=DeprecationWarning,
+            )
             recording_uris = [recording_uri]
         else:
             recording_uris = list(recording_uri)

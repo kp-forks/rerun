@@ -26,7 +26,7 @@ def first_segment_store(readonly_test_dataset: DatasetEntry) -> ChunkStore:
 def single_segment_store(entry_factory: EntryFactory, resource_prefix: str) -> ChunkStore:
     """A `ChunkStore` over a freshly-registered dataset containing exactly one segment."""
     ds = entry_factory.create_dataset("single_segment")
-    handle = ds.register(resource_prefix + "dataset/file1.rrd")
+    handle = ds.register([resource_prefix + "dataset/file1.rrd"])
     handle.wait(timeout_secs=50)
     segment_ids = ds.segment_ids()
     assert len(segment_ids) == 1
