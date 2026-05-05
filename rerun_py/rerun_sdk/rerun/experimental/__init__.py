@@ -11,6 +11,7 @@ from ._chunk import Chunk as Chunk
 from ._chunk_store import ChunkStore as ChunkStore
 from ._indexed_reader import IndexedReader as IndexedReader
 from ._lazy_chunk_stream import LazyChunkStream as LazyChunkStream
+from ._lazy_store import LazyStore as LazyStore
 from ._lens import DeriveLens as DeriveLens, Lens as Lens, MutateLens as MutateLens
 from ._mcap_reader import McapReader as McapReader
 from ._optimization_profile import OptimizationProfile as OptimizationProfile

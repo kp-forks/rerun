@@ -3,45 +3,38 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from collections.abc import Sequence
     from pathlib import Path
 
     from rerun.catalog import Schema
-    from rerun_bindings import ChunkStoreInternal
+    from rerun_bindings import LazyStoreInternal
 
-    from ._chunk import Chunk
     from ._lazy_chunk_stream import LazyChunkStream
 
 
-class ChunkStore:
+class LazyStore:
     """
-    A fully-materialized, in-memory chunk store.
+    Index-based, on-demand chunk store.
 
-    Build one from chunks via
-    [`ChunkStore.from_chunks`][rerun.experimental.ChunkStore.from_chunks], or
-    fully materialize an [`IndexedReader`][rerun.experimental.IndexedReader]
-    via `reader.stream().collect()`.
-    For lazy, on-demand chunk loading, see [`LazyStore`][rerun.experimental.LazyStore].
+    The manifest is held in memory (so `schema()`, `summary()`, and `__len__`
+    work without loading any chunks), but chunk data is loaded only when
+    requested.
 
-    Use `stream()` to process chunks through the lazy pipeline, or
-    `write_rrd()` to persist to disk.
+    Example:
+        lazy = RrdReader("recording.rrd").store()
+
+    Use `stream()` to process chunks through the lazy pipeline, or `write_rrd()`
+    to persist to disk. To fully materialize into a
+    [`ChunkStore`][rerun.experimental.ChunkStore], call `lazy.stream().collect()`.
+
     """
 
-    _internal: ChunkStoreInternal
+    _internal: LazyStoreInternal
 
-    def __init__(self, internal: ChunkStoreInternal) -> None:
+    def __init__(self, internal: LazyStoreInternal) -> None:
         self._internal = internal
 
-    @staticmethod
-    def from_chunks(chunks: Sequence[Chunk]) -> ChunkStore:
-        """Build a ChunkStore from a sequence of chunks."""
-        from rerun_bindings import ChunkStoreInternal
-
-        internals = [c._internal for c in chunks]
-        return ChunkStore(ChunkStoreInternal.from_chunks(internals))
-
     def schema(self) -> Schema:
-        """The schema describing all columns in this store."""
+        """The schema describing all columns in this store, derived from the manifest."""
         from rerun.catalog import Schema
 
         return Schema(self._internal.schema())
@@ -50,7 +43,7 @@ class ChunkStore:
         """
         Compact, deterministic summary of every chunk in the store.
 
-        Each line describes one chunk:
+        Built from the manifest; no chunk data is loaded. Each line describes one chunk:
 
             {entity_path}  rows={n}  static={True|False}  timelines=[…]  cols=[…]
 
@@ -83,8 +76,8 @@ class ChunkStore:
         )
 
     def __len__(self) -> int:
-        """Return the number of chunks in this store."""
+        """Return the number of chunks described by the manifest."""
         return self._internal.num_chunks()
 
     def __repr__(self) -> str:
-        return f"ChunkStore({len(self)} chunks)"
+        return f"LazyStore({len(self)} chunks)"

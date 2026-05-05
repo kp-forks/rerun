@@ -20,11 +20,13 @@
 pub mod chunk_store;
 mod engine;
 pub mod error;
+pub mod lazy_store;
 mod mcap_reader;
 mod parquet_reader;
 mod py_stream;
 pub mod rrd_reader;
 pub mod stream;
+mod summary;
 pub mod urdf_tree_stream;
 
 use std::sync::Arc;
@@ -42,6 +44,7 @@ pub fn register(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<py_stream::PyLazyChunkStreamInternal>()?;
     m.add_class::<py_stream::PyLazyChunkStreamIterator>()?;
     m.add_class::<chunk_store::PyChunkStoreInternal>()?;
+    m.add_class::<lazy_store::PyLazyStoreInternal>()?;
     m.add_function(wrap_pyfunction!(
         py_stream::_optimization_profile_values,
         m

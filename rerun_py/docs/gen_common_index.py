@@ -515,6 +515,7 @@ SECTION_TABLE: Final[list[Section]] = [
             "DeriveLens",
             "IndexedReader",
             "LazyChunkStream",
+            "LazyStore",
             "Lens",
             "McapReader",
             "MutateLens",

@@ -126,14 +126,14 @@ def _build_video_stream_rrd(tmp_dir: Path, filename: str, codec: rr.VideoCodec) 
 # ---------------------------------------------------------------------------
 
 
-def test_store_from_rrd_reader(test_rrd_path: Path) -> None:
-    """RrdReader.store() returns a ChunkStore."""
-    store = RrdReader(test_rrd_path).store()
+def test_collect_from_rrd_reader(test_rrd_path: Path) -> None:
+    """`reader.stream().collect()` returns a fully-materialized ChunkStore."""
+    store = RrdReader(test_rrd_path).stream().collect()
     assert isinstance(store, ChunkStore)
 
 
 def test_repr(test_rrd_path: Path) -> None:
-    store = RrdReader(test_rrd_path).store()
+    store = RrdReader(test_rrd_path).stream().collect()
     assert "ChunkStore" in repr(store)
 
 
@@ -144,12 +144,12 @@ def test_repr(test_rrd_path: Path) -> None:
 
 def test_schema(test_rrd_path: Path, snapshot: SnapshotAssertion) -> None:
     """schema() returns a Schema matching the stored data."""
-    store = RrdReader(test_rrd_path).store()
+    store = RrdReader(test_rrd_path).stream().collect()
     assert repr(store.schema()) == snapshot
 
 
 def test_schema_entity_paths(test_rrd_path: Path) -> None:
-    store = RrdReader(test_rrd_path).store()
+    store = RrdReader(test_rrd_path).stream().collect()
     paths = store.schema().entity_paths()
     assert "/robots/arm" in paths
     assert "/cameras/front" in paths
@@ -162,21 +162,21 @@ def test_schema_entity_paths(test_rrd_path: Path) -> None:
 
 
 def test_stream_returns_lazy_chunk_stream(test_rrd_path: Path) -> None:
-    store = RrdReader(test_rrd_path).store()
+    store = RrdReader(test_rrd_path).stream().collect()
     assert isinstance(store.stream(), LazyChunkStream)
 
 
 def test_stream_is_repeatable(test_rrd_path: Path) -> None:
     """stream() can be called multiple times; each produces the same schema."""
-    store = RrdReader(test_rrd_path).store()
+    store = RrdReader(test_rrd_path).stream().collect()
     first = store.stream().collect()
     second = store.stream().collect()
     assert first.schema() == second.schema()
 
 
 def test_stream_supports_pipeline_ops(test_rrd_path: Path) -> None:
-    """Chunks from store().stream() work with filter/collect."""
-    store = RrdReader(test_rrd_path).store()
+    """Chunks from load().stream() work with filter/collect."""
+    store = RrdReader(test_rrd_path).stream().collect()
     filtered = store.stream().filter(is_static=True).collect()
     assert filtered.schema().entity_paths() == ["/config"]
 
@@ -200,18 +200,18 @@ def test_same_schema(test_rrd_path: Path) -> None:
 
 
 def test_write_rrd_roundtrip(test_rrd_path: Path, tmp_path: Path) -> None:
-    """write_rrd() -> RrdReader().store() preserves schema."""
-    store1 = RrdReader(test_rrd_path).store()
+    """write_rrd() -> RrdReader().stream().collect() preserves schema."""
+    store1 = RrdReader(test_rrd_path).stream().collect()
     out = tmp_path / "roundtrip.rrd"
     store1.write_rrd(out, application_id=APP_ID, recording_id=RECORDING_ID)
 
-    store2 = RrdReader(out).store()
+    store2 = RrdReader(out).stream().collect()
     assert store1.schema() == store2.schema()
 
 
 def test_write_rrd_metadata(test_rrd_path: Path, tmp_path: Path) -> None:
     """write_rrd() writes the provided application_id and recording_id."""
-    store = RrdReader(test_rrd_path).store()
+    store = RrdReader(test_rrd_path).stream().collect()
     out = tmp_path / "meta.rrd"
     store.write_rrd(out, application_id="my-app", recording_id="my-rec")
 
@@ -329,61 +329,61 @@ def test_collect_optimize_video_stream_summary(tmp_path_factory: pytest.TempPath
     assert "\n".join(sections) == inline_snapshot("""\
 === Big_Buck_Bunny_1080_10s_av1.mp4 ===
 before_gop: num_gops=1 num_chunks=17
-/video rows=1 bytes=1.1 KiB static=True timelines=[] cols=['VideoStream:codec']
-/video rows=1 bytes=534 KiB static=False timelines=['video_time'] cols=['VideoStream:sample', 'video_time']
-/video rows=19 bytes=378 KiB static=False timelines=['video_time'] cols=['VideoStream:sample', 'video_time']
-/video rows=19 bytes=382 KiB static=False timelines=['video_time'] cols=['VideoStream:sample', 'video_time']
-/video rows=24 bytes=378 KiB static=False timelines=['video_time'] cols=['VideoStream:sample', 'video_time']
-/video rows=22 bytes=330 KiB static=False timelines=['video_time'] cols=['VideoStream:sample', 'video_time']
-/video rows=17 bytes=277 KiB static=False timelines=['video_time'] cols=['VideoStream:sample', 'video_time']
-/video rows=17 bytes=279 KiB static=False timelines=['video_time'] cols=['VideoStream:sample', 'video_time']
-/video rows=17 bytes=280 KiB static=False timelines=['video_time'] cols=['VideoStream:sample', 'video_time']
-/video rows=18 bytes=381 KiB static=False timelines=['video_time'] cols=['VideoStream:sample', 'video_time']
-/video rows=32 bytes=377 KiB static=False timelines=['video_time'] cols=['VideoStream:sample', 'video_time']
-/video rows=18 bytes=278 KiB static=False timelines=['video_time'] cols=['VideoStream:sample', 'video_time']
-/video rows=19 bytes=377 KiB static=False timelines=['video_time'] cols=['VideoStream:sample', 'video_time']
-/video rows=16 bytes=297 KiB static=False timelines=['video_time'] cols=['VideoStream:sample', 'video_time']
-/video rows=31 bytes=371 KiB static=False timelines=['video_time'] cols=['VideoStream:sample', 'video_time']
-/video rows=30 bytes=237 KiB static=False timelines=['video_time'] cols=['VideoStream:sample', 'video_time']
-/__properties rows=1 bytes=1.1 KiB static=True timelines=[] cols=['RecordingInfo:start_time']
+/__properties rows=1 static=True timelines=[] cols=['RecordingInfo:start_time']
+/video rows=1 static=True timelines=[] cols=['VideoStream:codec']
+/video rows=1 static=False timelines=['video_time'] cols=['VideoStream:sample', 'video_time']
+/video rows=19 static=False timelines=['video_time'] cols=['VideoStream:sample', 'video_time']
+/video rows=19 static=False timelines=['video_time'] cols=['VideoStream:sample', 'video_time']
+/video rows=24 static=False timelines=['video_time'] cols=['VideoStream:sample', 'video_time']
+/video rows=22 static=False timelines=['video_time'] cols=['VideoStream:sample', 'video_time']
+/video rows=17 static=False timelines=['video_time'] cols=['VideoStream:sample', 'video_time']
+/video rows=17 static=False timelines=['video_time'] cols=['VideoStream:sample', 'video_time']
+/video rows=17 static=False timelines=['video_time'] cols=['VideoStream:sample', 'video_time']
+/video rows=18 static=False timelines=['video_time'] cols=['VideoStream:sample', 'video_time']
+/video rows=32 static=False timelines=['video_time'] cols=['VideoStream:sample', 'video_time']
+/video rows=18 static=False timelines=['video_time'] cols=['VideoStream:sample', 'video_time']
+/video rows=19 static=False timelines=['video_time'] cols=['VideoStream:sample', 'video_time']
+/video rows=16 static=False timelines=['video_time'] cols=['VideoStream:sample', 'video_time']
+/video rows=31 static=False timelines=['video_time'] cols=['VideoStream:sample', 'video_time']
+/video rows=30 static=False timelines=['video_time'] cols=['VideoStream:sample', 'video_time']
 after_gop: num_gops=1 num_chunks=3
-/video rows=1 bytes=1.1 KiB static=True timelines=[] cols=['VideoStream:codec']
-/video rows=315 bytes=6.4 MiB static=False timelines=['video_time'] cols=['VideoStream:sample', 'video_time']
-/__properties rows=1 bytes=1.1 KiB static=True timelines=[] cols=['RecordingInfo:start_time']
+/__properties rows=1 static=True timelines=[] cols=['RecordingInfo:start_time']
+/video rows=1 static=True timelines=[] cols=['VideoStream:codec']
+/video rows=315 static=False timelines=['video_time'] cols=['VideoStream:sample', 'video_time']
 
 
 === Big_Buck_Bunny_1080_1s_h264_nobframes.mp4 ===
 before_gop: num_gops=1 num_chunks=11
-/video rows=1 bytes=1.1 KiB static=True timelines=[] cols=['VideoStream:codec']
-/video rows=1 bytes=348 KiB static=False timelines=['video_time'] cols=['VideoStream:sample', 'video_time']
-/video rows=4 bytes=353 KiB static=False timelines=['video_time'] cols=['VideoStream:sample', 'video_time']
-/video rows=4 bytes=371 KiB static=False timelines=['video_time'] cols=['VideoStream:sample', 'video_time']
-/video rows=3 bytes=293 KiB static=False timelines=['video_time'] cols=['VideoStream:sample', 'video_time']
-/video rows=3 bytes=297 KiB static=False timelines=['video_time'] cols=['VideoStream:sample', 'video_time']
-/video rows=4 bytes=379 KiB static=False timelines=['video_time'] cols=['VideoStream:sample', 'video_time']
-/video rows=3 bytes=302 KiB static=False timelines=['video_time'] cols=['VideoStream:sample', 'video_time']
-/video rows=4 bytes=379 KiB static=False timelines=['video_time'] cols=['VideoStream:sample', 'video_time']
-/video rows=4 bytes=260 KiB static=False timelines=['video_time'] cols=['VideoStream:sample', 'video_time']
-/__properties rows=1 bytes=1.1 KiB static=True timelines=[] cols=['RecordingInfo:start_time']
+/__properties rows=1 static=True timelines=[] cols=['RecordingInfo:start_time']
+/video rows=1 static=True timelines=[] cols=['VideoStream:codec']
+/video rows=1 static=False timelines=['video_time'] cols=['VideoStream:sample', 'video_time']
+/video rows=4 static=False timelines=['video_time'] cols=['VideoStream:sample', 'video_time']
+/video rows=4 static=False timelines=['video_time'] cols=['VideoStream:sample', 'video_time']
+/video rows=3 static=False timelines=['video_time'] cols=['VideoStream:sample', 'video_time']
+/video rows=3 static=False timelines=['video_time'] cols=['VideoStream:sample', 'video_time']
+/video rows=4 static=False timelines=['video_time'] cols=['VideoStream:sample', 'video_time']
+/video rows=3 static=False timelines=['video_time'] cols=['VideoStream:sample', 'video_time']
+/video rows=4 static=False timelines=['video_time'] cols=['VideoStream:sample', 'video_time']
+/video rows=4 static=False timelines=['video_time'] cols=['VideoStream:sample', 'video_time']
 after_gop: num_gops=1 num_chunks=3
-/video rows=1 bytes=1.1 KiB static=True timelines=[] cols=['VideoStream:codec']
-/video rows=39 bytes=4.0 MiB static=False timelines=['video_time'] cols=['VideoStream:sample', 'video_time']
-/__properties rows=1 bytes=1.1 KiB static=True timelines=[] cols=['RecordingInfo:start_time']
+/__properties rows=1 static=True timelines=[] cols=['RecordingInfo:start_time']
+/video rows=1 static=True timelines=[] cols=['VideoStream:codec']
+/video rows=39 static=False timelines=['video_time'] cols=['VideoStream:sample', 'video_time']
 
 
 === Sintel_1080_10s_av1.mp4 ===
 before_gop: num_gops=12 num_chunks=5
-/video rows=1 bytes=1.1 KiB static=True timelines=[] cols=['VideoStream:codec']
-/video rows=114 bytes=382 KiB static=False timelines=['video_time'] cols=['VideoStream:sample', 'video_time']
-/video rows=111 bytes=382 KiB static=False timelines=['video_time'] cols=['VideoStream:sample', 'video_time']
-/video rows=75 bytes=279 KiB static=False timelines=['video_time'] cols=['VideoStream:sample', 'video_time']
-/__properties rows=1 bytes=1.1 KiB static=True timelines=[] cols=['RecordingInfo:start_time']
+/__properties rows=1 static=True timelines=[] cols=['RecordingInfo:start_time']
+/video rows=1 static=True timelines=[] cols=['VideoStream:codec']
+/video rows=114 static=False timelines=['video_time'] cols=['VideoStream:sample', 'video_time']
+/video rows=111 static=False timelines=['video_time'] cols=['VideoStream:sample', 'video_time']
+/video rows=75 static=False timelines=['video_time'] cols=['VideoStream:sample', 'video_time']
 after_gop: num_gops=12 num_chunks=6
-/video rows=1 bytes=1.1 KiB static=True timelines=[] cols=['VideoStream:codec']
-/video rows=100 bytes=381 KiB static=False timelines=['video_time'] cols=['VideoStream:sample', 'video_time']
-/video rows=84 bytes=324 KiB static=False timelines=['video_time'] cols=['VideoStream:sample', 'video_time']
-/video rows=52 bytes=216 KiB static=False timelines=['video_time'] cols=['VideoStream:sample', 'video_time']
-/video rows=77 bytes=318 KiB static=False timelines=['video_time'] cols=['VideoStream:sample', 'video_time']
-/__properties rows=1 bytes=1.1 KiB static=True timelines=[] cols=['RecordingInfo:start_time']
+/__properties rows=1 static=True timelines=[] cols=['RecordingInfo:start_time']
+/video rows=1 static=True timelines=[] cols=['VideoStream:codec']
+/video rows=100 static=False timelines=['video_time'] cols=['VideoStream:sample', 'video_time']
+/video rows=84 static=False timelines=['video_time'] cols=['VideoStream:sample', 'video_time']
+/video rows=52 static=False timelines=['video_time'] cols=['VideoStream:sample', 'video_time']
+/video rows=77 static=False timelines=['video_time'] cols=['VideoStream:sample', 'video_time']
 
 """)

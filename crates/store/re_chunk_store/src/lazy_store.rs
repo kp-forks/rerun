@@ -510,6 +510,12 @@ mod tests {
     }
 
     #[test]
+    fn arc_lazy_store_is_send_sync() {
+        fn assert_send_sync<T: Send + Sync>() {}
+        assert_send_sync::<std::sync::Arc<LazyStore>>();
+    }
+
+    #[test]
     fn test_lazy_vs_eager_equivalence() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("test.rrd");

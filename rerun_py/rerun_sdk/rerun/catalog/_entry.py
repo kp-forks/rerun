@@ -30,7 +30,7 @@ if TYPE_CHECKING:
 
     import datafusion
 
-    from rerun.experimental import ChunkStore
+    from rerun.experimental import LazyStore
     from rerun.recording import Recording
 
     from . import (
@@ -528,16 +528,18 @@ class DatasetEntry(Entry[DatasetEntryInternal]):
 
         return Recording(self._internal.download_segment(segment_id))
 
-    def segment_store(self, segment_id: str) -> ChunkStore:
+    def segment_store(self, segment_id: str) -> LazyStore:
         """
-        Open a remote segment as a lazy [`ChunkStore`][rerun.experimental.ChunkStore].
+        Open a remote segment as a [`LazyStore`][rerun.experimental.LazyStore].
 
-        The returned store is not materialized, but can be read and processed
-        using [`ChunkStore.stream`][rerun.experimental.ChunkStore.stream].
+        The manifest is fetched immediately; chunk data is loaded on demand
+        via [`LazyStore.stream`][rerun.experimental.LazyStore.stream]. To fully
+        materialize into a [`ChunkStore`][rerun.experimental.ChunkStore], call
+        `lazy.stream().collect()`.
         """
-        from rerun.experimental import ChunkStore
+        from rerun.experimental import LazyStore
 
-        return ChunkStore(self._internal.segment_store(segment_id))
+        return LazyStore(self._internal.segment_store(segment_id))
 
     @with_tracing("DatasetEntry.filter_segments")
     def filter_segments(self, segment_ids: str | Sequence[str] | datafusion.DataFrame) -> DatasetView:

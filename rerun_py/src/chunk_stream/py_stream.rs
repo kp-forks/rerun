@@ -246,7 +246,7 @@ impl PyLazyChunkStreamInternal {
                 }
             })?;
 
-            Ok(PyChunkStoreInternal::in_memory(store))
+            Ok(PyChunkStoreInternal::new(store))
         })
         .map_err(PyErr::from)
     }

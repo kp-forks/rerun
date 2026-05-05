@@ -55,6 +55,11 @@ pub enum ChunkPipelineError {
     #[error("Failed to read RRD file at {path}: {reason}")]
     RrdRead { path: PathBuf, reason: String },
 
+    #[error(
+        "Legacy RRD without footer: {path}. Use RrdReader.stream().collect() to read it eagerly into a ChunkStore."
+    )]
+    RrdNoManifest { path: PathBuf },
+
     #[error("MCAP error: {reason}")]
     Mcap { reason: String },
 
@@ -94,6 +99,7 @@ impl From<ChunkPipelineError> for pyo3::PyErr {
 
             ChunkPipelineError::RrdChunkDecode { .. }
             | ChunkPipelineError::RrdRead { .. }
+            | ChunkPipelineError::RrdNoManifest { .. }
             | ChunkPipelineError::Mcap { .. }
             | ChunkPipelineError::Parquet { .. }
             | ChunkPipelineError::Urdf { .. }

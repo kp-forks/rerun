@@ -30,7 +30,7 @@ use super::{
 };
 use crate::catalog::entry::set_entry_name;
 use crate::catalog::{AnyComponentColumn, PyIndexColumnSelector, PySchemaInternal};
-use crate::chunk_stream::chunk_store::PyChunkStoreInternal;
+use crate::chunk_stream::lazy_store::PyLazyStoreInternal;
 use crate::recording::PyRecordingInternal;
 use crate::trace_context::read_trace_context_from_python;
 use crate::utils::{get_tokio_runtime, wait_for_future};
@@ -520,11 +520,11 @@ impl PyDatasetEntryInternal {
         })
     }
 
-    /// Open a remote segment as a lazy [`ChunkStore`][rerun.experimental.ChunkStore].
+    /// Open a remote segment as a [`LazyStore`][rerun.experimental.LazyStore].
     ///
     /// One round-trip on construction (the manifest); chunks are fetched on
     /// demand.
-    fn segment_store(self_: PyRef<'_, Self>, segment_id: String) -> PyResult<PyChunkStoreInternal> {
+    fn segment_store(self_: PyRef<'_, Self>, segment_id: String) -> PyResult<PyLazyStoreInternal> {
         let py = self_.py();
         let _span = read_trace_context_from_python(py, "DatasetEntry.segment_store").entered();
         let connection = self_.client.borrow(py).connection().clone();
@@ -544,7 +544,7 @@ impl PyDatasetEntryInternal {
         })?;
 
         let lazy = LazyStore::new(Arc::new(provider));
-        Ok(PyChunkStoreInternal::indexed(lazy))
+        Ok(PyLazyStoreInternal::new(lazy))
     }
 
     // TODO(RR-2824): we should have a generic `create_index(PyIndexConfig)`
