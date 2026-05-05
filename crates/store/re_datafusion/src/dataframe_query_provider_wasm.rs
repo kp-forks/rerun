@@ -289,7 +289,7 @@ impl<T: DataframeClientAPI> SegmentStreamExec<T> {
 
 #[tracing::instrument(level = "trace", skip_all)]
 fn create_next_row(
-    query_handle: &QueryHandle<StorageEngine>,
+    query_handle: &mut QueryHandle<StorageEngine>,
     segment_id: &str,
     target_schema: &Arc<Schema>,
 ) -> ApiResult<Option<RecordBatch>> {

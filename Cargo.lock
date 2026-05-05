@@ -8585,8 +8585,10 @@ version = "0.32.0-alpha.1+dev"
 dependencies = [
  "anyhow",
  "arrow",
+ "criterion",
  "insta",
  "itertools 0.14.0",
+ "mimalloc",
  "nohash-hasher",
  "rayon",
  "re_arrow_util",

@@ -424,7 +424,7 @@ const FLUSH_BATCH_ROWS: usize = DEFAULT_BATCH_ROWS;
 const FLUSH_BATCH_BYTES: usize = DEFAULT_BATCH_BYTES as usize;
 
 async fn send_next_row_batch(
-    query_handle: &QueryHandle<StorageEngine>,
+    query_handle: &mut QueryHandle<StorageEngine>,
     segment_id: &str,
     target_schema: &Arc<Schema>,
     output_channel: &Sender<RecordBatch>,
@@ -570,14 +570,14 @@ async fn chunk_store_cpu_worker_thread(
 
         /// Flush all remaining rows from the query handle, respecting the row limit.
         async fn flush(
-            self,
+            mut self,
             projected_schema: &Arc<Schema>,
             output_channel: &Sender<RecordBatch>,
             rows_sent: &mut usize,
             limit: Option<usize>,
         ) -> ApiResult<()> {
             while send_next_row_batch(
-                &self.query_handle,
+                &mut self.query_handle,
                 &self.segment_id,
                 projected_schema,
                 output_channel,
