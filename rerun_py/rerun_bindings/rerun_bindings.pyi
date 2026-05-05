@@ -1532,6 +1532,23 @@ def _dec_active_tracing_sessions() -> None:
 def _log_tracing_session_started(rerun_session_id: str) -> None:
     """Emit `rerun tracing session started: <rerun_session_id>` through the Rust `tracing` stack at INFO level."""
 
+def _log_tracing_session_finished(
+    rerun_session_id: str,
+    elapsed_s: float,
+    cpu_user_s: float | None,
+    cpu_system_s: float | None,
+    cpu_iowait_s: float | None,
+    net_rx_mb: float | None,
+) -> None:
+    """
+    Emit a single structured INFO event summarizing the tracing session at scope exit.
+
+    `Option<f64>` fields are `None` when the host platform or runtime can't supply
+    the metric (psutil missing, or `iowait` unavailable on macOS/Windows). Routed
+    through the Rust `tracing` stack so it follows `RUST_LOG` and the fmt-layer
+    pipeline like `_log_tracing_session_started`.
+    """
+
 #####################################################################################################################
 ## PIPELINE APIS                                                                                                   ##
 #####################################################################################################################

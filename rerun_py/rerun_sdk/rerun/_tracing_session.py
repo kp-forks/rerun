@@ -27,7 +27,10 @@ from __future__ import annotations
 import contextlib
 import logging
 import secrets
+import time
 from typing import TYPE_CHECKING
+
+import psutil
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
@@ -95,6 +98,7 @@ def tracing_session() -> Iterator[str]:
         _get_tracing_session_var,
         _inc_active_tracing_sessions,
         _is_telemetry_active,
+        _log_tracing_session_finished,
         _log_tracing_session_started,
     )
 
@@ -131,7 +135,72 @@ def tracing_session() -> Iterator[str]:
             # handler attached to the `rerun` logger and would silently drop
             # INFO records in environments like ipython).
             _log_tracing_session_started(sid)
+
+            # Snapshot before yielding. Metrics collection is best-effort: any
+            # psutil failure (AccessDenied, NoSuchProcess, OSError, ...) must
+            # never propagate out of `__enter__` or `__exit__`, since that
+            # would either block the user's code from running or mask its
+            # successful completion. Each psutil source is wrapped
+            # individually so a failure in one still allows the other to be
+            # reported.
+            #
+            # If the `with` block raises, we skip the finished-log entirely;
+            # the started-log already gave the customer the session id.
+            t0 = time.perf_counter()
+            proc: psutil.Process | None
+            cpu0 = None
+            try:
+                proc = psutil.Process()
+                cpu0 = proc.cpu_times()
+            except Exception:
+                proc = None
+                cpu0 = None
+            try:
+                net0 = psutil.net_io_counters()
+            except Exception:
+                net0 = None
+
             yield sid
+
+            elapsed_s = time.perf_counter() - t0
+            cpu_user_s: float | None = None
+            cpu_system_s: float | None = None
+            cpu_iowait_s: float | None = None
+            net_rx_mb: float | None = None
+            if cpu0 is not None and proc is not None:
+                try:
+                    cpu1 = proc.cpu_times()
+                    cpu_user_s = cpu1.user - cpu0.user
+                    cpu_system_s = cpu1.system - cpu0.system
+                    # `iowait` is Linux-only on psutil's Process.cpu_times().
+                    if hasattr(cpu1, "iowait") and hasattr(cpu0, "iowait"):
+                        cpu_iowait_s = cpu1.iowait - cpu0.iowait
+                except Exception:
+                    cpu_user_s = cpu_system_s = cpu_iowait_s = None
+            if net0 is not None:
+                # Host-wide counter, not per-process. Captures every byte the
+                # machine received during the scope, including unrelated
+                # traffic. Good enough for support correlation, not a precise
+                # per-rerun metric.
+                try:
+                    net1 = psutil.net_io_counters()
+                    net_rx_mb = (net1.bytes_recv - net0.bytes_recv) / (1024 * 1024)
+                except Exception:
+                    net_rx_mb = None
+
+            try:
+                _log_tracing_session_finished(
+                    sid,
+                    elapsed_s,
+                    cpu_user_s,
+                    cpu_system_s,
+                    cpu_iowait_s,
+                    net_rx_mb,
+                )
+            except Exception:
+                # The finished-log is purely informational; never let a
+                # logging failure mask the user's successful work.
+                pass
         finally:
             var.reset(token)
     finally:

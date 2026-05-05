@@ -81,3 +81,31 @@ pub fn dec_active_tracing_sessions() {
 pub fn log_tracing_session_started(rerun_session_id: &str) {
     tracing::info!("rerun tracing session started: {rerun_session_id}");
 }
+
+/// Emit a single structured INFO event summarizing the tracing session at scope exit.
+///
+/// `Option<f64>` fields are `None` when the host platform or runtime can't supply
+/// the metric (psutil missing, or `iowait` unavailable on macOS/Windows). Routed
+/// through the Rust `tracing` stack so it follows `RUST_LOG` and the fmt-layer
+/// pipeline like `_log_tracing_session_started`.
+#[pyfunction]
+#[pyo3(name = "_log_tracing_session_finished")]
+#[pyo3(signature = (rerun_session_id, elapsed_s, cpu_user_s, cpu_system_s, cpu_iowait_s, net_rx_mb))]
+pub fn log_tracing_session_finished(
+    rerun_session_id: &str,
+    elapsed_s: f64,
+    cpu_user_s: Option<f64>,
+    cpu_system_s: Option<f64>,
+    cpu_iowait_s: Option<f64>,
+    net_rx_mb: Option<f64>,
+) {
+    tracing::info!(
+        rerun_session_id,
+        elapsed_s,
+        cpu_user_s = ?cpu_user_s,
+        cpu_system_s = ?cpu_system_s,
+        cpu_iowait_s = ?cpu_iowait_s,
+        net_rx_mb = ?net_rx_mb,
+        "rerun tracing session finished",
+    );
+}

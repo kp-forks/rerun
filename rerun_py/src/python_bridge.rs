@@ -348,6 +348,10 @@ fn rerun_bindings(py: Python<'_>, m: &Bound<'_, PyModule>) -> PyResult<()> {
         crate::tracing_session::log_tracing_session_started,
         m
     )?)?;
+    m.add_function(wrap_pyfunction!(
+        crate::tracing_session::log_tracing_session_finished,
+        m
+    )?)?;
 
     // viewer
     crate::viewer::register(py, m)?;

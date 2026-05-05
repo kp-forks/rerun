@@ -10,6 +10,7 @@ from .rerun_bindings import (
     _inc_active_tracing_sessions as _inc_active_tracing_sessions,
     _IndexValuesLikeInternal as _IndexValuesLikeInternal,
     _is_telemetry_active as _is_telemetry_active,
+    _log_tracing_session_finished as _log_tracing_session_finished,
     _log_tracing_session_started as _log_tracing_session_started,
     _optimization_profile_values as _optimization_profile_values,
     _ServerInternal as _ServerInternal,
