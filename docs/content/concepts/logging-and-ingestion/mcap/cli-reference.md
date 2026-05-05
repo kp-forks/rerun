@@ -62,10 +62,10 @@ rerun mcap convert input.mcap -d ros2msg -d raw -d recording_info -o output.rrd
 Decoding:
 - **`raw`**: Preserve original message bytes
 - **`schema`**: Extract metadata and schema information
-- **`stats`**: Compute file and channel statistics
+- **`stats`**: Compute file and channel statistics into RRD `__mcap_properties`
 - **`metadata`**: Extract metadata records into RRD `__mcap_metadata`, if present
 - **`protobuf`**: Decode protobuf messages using into generic Arrow data without Rerun visualization components
-- **`recording_info`**: Extract recording session metadata
+- **`recording_info`**: Extract recording session metadata into RRD `__mcap_properties`
 - **`urdf`**: Use Rerun's built-in URDF loader when a ROS 2 `/robot_description` topic is present
 
 Semantic:

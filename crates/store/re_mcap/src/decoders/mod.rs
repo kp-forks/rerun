@@ -25,6 +25,10 @@ use crate::Error;
 use crate::parsers::{ChannelId, MessageParser, ParserContext};
 use crate::util::collect_empty_channels;
 
+// Write MCAP file info & stats to a dedicated static entity.
+// This keeps the general RRD `__properties` clean for user-specific property layers.
+const MCAP_PROPERTIES_ENTITY_PATH: &str = "__mcap_properties";
+
 /// Globally unique identifier for a decoder.
 #[derive(Clone, Debug, PartialOrd, Ord, PartialEq, Eq)]
 #[repr(transparent)]
