@@ -133,6 +133,14 @@ impl Notification {
         }
     }
 
+    pub fn level(&self) -> NotificationLevel {
+        self.level
+    }
+
+    pub fn text(&self) -> &str {
+        &self.text
+    }
+
     pub fn with_details(mut self, details: impl Into<String>) -> Self {
         self.details = Some(details.into());
         self
@@ -208,6 +216,10 @@ impl NotificationUi {
 
     pub fn unread_notification_level(&self) -> Option<NotificationLevel> {
         self.unread_notification_level
+    }
+
+    pub fn notifications(&self) -> &[Notification] {
+        &self.notifications
     }
 
     /// Given that the log is relevant this creates a notification

@@ -8905,6 +8905,8 @@ dependencies = [
  "re_viewer",
  "re_viewer_context",
  "re_viewport_blueprint",
+ "reqwest",
+ "serde",
  "tempfile",
  "tokio",
 ]
