@@ -24,6 +24,22 @@ pub struct VersionResponse {
     /// Cloud region where this instance is deployed (e.g. "us-west-2", "eastus"). Null if not deployed on cloud.
     #[prost(string, optional, tag = "4")]
     pub cloud_region: ::core::option::Option<::prost::alloc::string::String>,
+    /// Server-supported feature flags. Clients use this to gate optional behavior
+    /// and stay safe against rolling deployments where the server may be older
+    /// than the client.
+    ///
+    /// The format is a list of opaque feature strings. Known features:
+    ///
+    /// * `per_segment_index_values` — the server consumes
+    ///    `QueryLatestAt.per_segment_values` (RR-4355). Clients that omit this
+    ///    capability check and send `per_segment_values` to an old server will
+    ///    silently get static-only data.
+    ///
+    /// Unknown features must be ignored. Adding new features is additive and
+    /// never breaks compatibility — old clients see an empty list and fall back
+    /// to today's slow-but-correct path.
+    #[prost(string, repeated, tag = "5")]
+    pub features: ::prost::alloc::vec::Vec<::prost::alloc::string::String>,
 }
 impl ::prost::Name for VersionResponse {
     const NAME: &'static str = "VersionResponse";
@@ -911,7 +927,7 @@ impl ::prost::Name for QueryDatasetResponse {
         "/rerun.cloud.v1alpha1.QueryDatasetResponse".into()
     }
 }
-#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+#[derive(Clone, PartialEq, ::prost::Message)]
 pub struct Query {
     /// If specified, will perform a latest-at query with the given parameters.
     ///
@@ -957,18 +973,43 @@ impl ::prost::Name for Query {
 /// A chunk-level latest-at query, aka `LatestAtRelevantChunks`.
 ///
 /// This has the exact same semantics as the query of the same name on our `ChunkStore`.
-#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+///
+/// Two modes of use (mutually exclusive):
+///    1. Global: set `at`. Applied to all segments.
+///    2. Per-segment: set `per_segment_values`. Each entry is positionally
+///       matched to `QueryDatasetRequest.segment_ids`. `at` and `Query.range`
+///       must be unset — the server reconstructs global bounds internally
+///       from the per-segment values.
+#[derive(Clone, PartialEq, ::prost::Message)]
 pub struct QueryLatestAt {
     /// Which index column should we perform the query on? E.g. `log_time`.
     ///
     /// Leave this empty to query for static data.
     #[prost(message, optional, tag = "1")]
     pub index: ::core::option::Option<super::super::common::v1alpha1::IndexColumnSelector>,
-    /// What index value are we looking for?
+    /// Global query value — applied to all segments.
     ///
-    /// Leave this empty to query for static data.
+    /// Omit this field to query for static data only.
+    /// Mutually exclusive with `per_segment_values`.
     #[prost(int64, optional, tag = "2")]
     pub at: ::core::option::Option<i64>,
+    /// Per-segment index values, positionally matched to
+    /// `QueryDatasetRequest.segment_ids`.
+    ///
+    /// When non-empty, `at` and `Query.range` must be unset — the server
+    /// reconstructs global bounds from the values for Lance pre-filtering,
+    /// then applies a per-segment post-filter for precision.
+    ///
+    /// Constraints (server returns `invalid_argument` on violation):
+    ///    - `segment_ids` must be non-empty.
+    ///    - `per_segment_values.len()` must equal `segment_ids.len()`.
+    ///    - `segment_ids` must contain no duplicates.
+    ///
+    /// Each entry's values list corresponds to the segment at the same
+    /// position in `segment_ids`. An empty values list for a segment means
+    /// no temporal chunks are returned for that segment (only static data).
+    #[prost(message, repeated, tag = "4")]
+    pub per_segment_values: ::prost::alloc::vec::Vec<IndexValueList>,
 }
 impl ::prost::Name for QueryLatestAt {
     const NAME: &'static str = "QueryLatestAt";
@@ -978,6 +1019,23 @@ impl ::prost::Name for QueryLatestAt {
     }
     fn type_url() -> ::prost::alloc::string::String {
         "/rerun.cloud.v1alpha1.QueryLatestAt".into()
+    }
+}
+/// A list of index values for a single segment.
+/// Used in `QueryLatestAt.per_segment_values`.
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct IndexValueList {
+    #[prost(int64, repeated, tag = "1")]
+    pub values: ::prost::alloc::vec::Vec<i64>,
+}
+impl ::prost::Name for IndexValueList {
+    const NAME: &'static str = "IndexValueList";
+    const PACKAGE: &'static str = "rerun.cloud.v1alpha1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "rerun.cloud.v1alpha1.IndexValueList".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/rerun.cloud.v1alpha1.IndexValueList".into()
     }
 }
 /// / A chunk-level range query, aka `RangeRelevantChunks`.
@@ -2677,6 +2735,13 @@ pub mod rerun_cloud_service_client {
         ///
         /// Passing chunk IDs to this method effectively acts as a IF_EXIST filter.
         ///
+        /// For latest-at queries, the returned chunks are a **correctness-preserving
+        /// superset** of the minimum set needed to answer the query: the server may
+        /// include additional candidate chunks (e.g., overlap siblings within the
+        /// global max chunk length, or chunks that pass segment-level bounds without
+        /// per-value narrowing). Clients are expected to run their own latest-at
+        /// resolution on the returned chunks.
+        ///
         /// This endpoint requires the standard dataset headers.
         pub async fn query_dataset(
             &mut self,
@@ -3161,6 +3226,13 @@ pub mod rerun_cloud_service_server {
         /// To fetch the actual chunks themselves, see `FetchChunks`.
         ///
         /// Passing chunk IDs to this method effectively acts as a IF_EXIST filter.
+        ///
+        /// For latest-at queries, the returned chunks are a **correctness-preserving
+        /// superset** of the minimum set needed to answer the query: the server may
+        /// include additional candidate chunks (e.g., overlap siblings within the
+        /// global max chunk length, or chunks that pass segment-level bounds without
+        /// per-value narrowing). Clients are expected to run their own latest-at
+        /// resolution on the returned chunks.
         ///
         /// This endpoint requires the standard dataset headers.
         async fn query_dataset(

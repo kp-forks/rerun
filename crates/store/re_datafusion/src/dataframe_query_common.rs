@@ -252,14 +252,20 @@ impl<T: DataframeClientAPI> DataframeQueryTableProvider<T> {
             ApiError::invalid_arguments_with_source(trace_id, err, "computing schema for query")
         })?;
 
-        let select_all_entity_paths = false;
-
         let entity_paths = query_expression
             .view_contents
             .as_ref()
             .map_or(vec![], |contents| {
                 contents.keys().cloned().collect::<Vec<_>>()
             });
+
+        // Preserve the `QueryExpression` distinction between:
+        // - `view_contents=None`: all entities
+        // - `view_contents=Some(empty)`: no entities
+        //
+        // Both cases produce an empty `entity_paths` list, so the explicit flag
+        // must be driven from `view_contents` itself rather than the derived list.
+        let select_all_entity_paths = query_expression.view_contents.is_none();
 
         let query = query_from_query_expression(query_expression);
         let fuzzy_descriptors: Vec<String> = query_expression
@@ -889,16 +895,13 @@ pub fn query_from_query_expression(query_expression: &QueryExpression) -> Query 
     } else {
         query_expression
             .min_latest_at()
-            .map(|latest_at| QueryLatestAt {
-                index: Some(latest_at.timeline().to_string()),
-                at: latest_at.at(),
-            })
+            .map(|latest_at| QueryLatestAt::global(Some(latest_at.timeline()), latest_at.at()))
     };
 
     Query {
         latest_at,
         range: query_expression.max_range().map(|range| QueryRange {
-            index: range.timeline().to_string(),
+            index: *range.timeline(),
             index_range: range.range,
         }),
         columns_always_include_everything: false,

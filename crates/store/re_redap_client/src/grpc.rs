@@ -635,7 +635,7 @@ async fn stream_segment_from_server(
                 include_temporal_data: true,
                 query: Some(
                     re_protos::cloud::v1alpha1::ext::Query::latest_at_range(
-                        time_selection.timeline.name(),
+                        *time_selection.timeline.name(),
                         time_selection.range,
                     )
                     .into(),
