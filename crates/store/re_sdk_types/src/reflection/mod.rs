@@ -129,6 +129,17 @@ fn generate_component_reflection() -> Result<ComponentReflectionMap, Serializati
             },
         ),
         (
+            <ColumnName as Component>::name(),
+            ComponentReflection {
+                docstring_md: "The name of a column in a table.\n\n⚠\u{fe0f} **This type is _unstable_ and may change significantly in a way that the data won't be backwards compatible.**",
+                deprecation_summary: None,
+                custom_placeholder: None,
+                datatype: ColumnName::arrow_datatype(),
+                is_enum: false,
+                verify_arrow_array: ColumnName::verify_arrow_array,
+            },
+        ),
+        (
             <ColumnOrder as Component>::name(),
             ComponentReflection {
                 docstring_md: "The order of component columns (which remain always grouped by entity path) in the dataframe view.\n\nEntities not in this list are appended at the end in their default order.\nEntities in this list that are not present in the view are ignored.\n\n⚠\u{fe0f} **This type is _unstable_ and may change significantly in a way that the data won't be backwards compatible.**",
@@ -4359,6 +4370,45 @@ fn generate_archetype_reflection() -> ArchetypeReflectionMap {
                         display_name: "Show bounding box",
                         component_type: "rerun.blueprint.components.Enabled".into(),
                         docstring_md: "Whether the bounding box should be shown.",
+                        flags: ArchetypeFieldFlags::UI_EDITABLE,
+                    },
+                ],
+            },
+        ),
+        (
+            ArchetypeName::new("rerun.blueprint.archetypes.TableBlueprint"),
+            ArchetypeReflection {
+                display_name: "Table blueprint",
+                deprecation_summary: None,
+                scope: Some("blueprint"),
+                view_types: &[],
+                fields: vec![
+                    ArchetypeFieldReflection {
+                        name: "segment_preview_column",
+                        display_name: "Segment preview column",
+                        component_type: "rerun.blueprint.components.ColumnName".into(),
+                        docstring_md: "The name of the column that contains recording URIs for segment previews.\n\nEvery row can at most preview a single segment.\n\nFor the preview, the rest of the blueprint data is read it as it would be with regular recording blueprints,\nmeaning that the regular structure of archetypes.ViewportBlueprint, and archetypes.ViewBlueprint structure applies.\nHowever, this mostly ignores layout container types as well as automatic spawning.",
+                        flags: ArchetypeFieldFlags::UI_EDITABLE,
+                    },
+                    ArchetypeFieldReflection {
+                        name: "flag_column",
+                        display_name: "Flag column",
+                        component_type: "rerun.blueprint.components.ColumnName".into(),
+                        docstring_md: "The name of the boolean column used for flag/annotation toggles.\n\nMust be set for flagging to be available. The named column must exist in the\ntable and be of boolean type.\nAdditionally, the table must be remote and have another column with\n`rerun:is_table_index` metadata since flag changes are persisted to the server\nvia upsert.",
+                        flags: ArchetypeFieldFlags::UI_EDITABLE,
+                    },
+                    ArchetypeFieldReflection {
+                        name: "grid_view_card_title",
+                        display_name: "Grid view card title",
+                        component_type: "rerun.blueprint.components.ColumnName".into(),
+                        docstring_md: "The name of the column to use as the card title in grid view.\n\nIf unset, the first visible string column is used as the title.",
+                        flags: ArchetypeFieldFlags::UI_EDITABLE,
+                    },
+                    ArchetypeFieldReflection {
+                        name: "url_column",
+                        display_name: "Url column",
+                        component_type: "rerun.blueprint.components.ColumnName".into(),
+                        docstring_md: "The name of the column containing URLs to open when a card is clicked in grid view.\n\nIf unset, defaults to the first URL column in the table that points to the same\nRerun server. If no such column exists, no URL is associated with cards and\nclicking them does not navigate anywhere.",
                         flags: ArchetypeFieldFlags::UI_EDITABLE,
                     },
                 ],
