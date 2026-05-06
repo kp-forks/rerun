@@ -279,8 +279,10 @@ pub async fn fetch_batch_group_via_grpc<T: DataframeClientAPI>(
             chunk_infos: vec![chunk_info],
         };
 
+        let mut req = fetch_chunks_request.into_request();
+        req.set_timeout(re_redap_client::FETCH_CHUNKS_DEADLINE);
         let response = client
-            .fetch_chunks(fetch_chunks_request.into_request())
+            .fetch_chunks(req)
             .instrument(tracing::trace_span!("batched_fetch_chunks"))
             .await
             .map_err(|err| re_redap_client::ApiError::tonic(err, "FetchChunks request failed"))?;

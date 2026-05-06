@@ -800,9 +800,11 @@ where
             chunk_infos: vec![DataframePart::from(record_batch)],
         };
 
+        let mut req = tonic::Request::new(fetch_chunks_request);
+        req.set_timeout(crate::FETCH_CHUNKS_DEADLINE);
         let response = self
             .inner()
-            .fetch_chunks(fetch_chunks_request)
+            .fetch_chunks(req)
             .await
             // NOTE: `ApiError::tonic` already extracts the trace-id from the error metadata.
             .map_err(|err| ApiError::tonic(err, "/FetchChunks failed"))?;
@@ -852,9 +854,11 @@ where
             chunk_infos: chunk_info_batches,
         };
 
+        let mut req = tonic::Request::new(fetch_chunks_request);
+        req.set_timeout(crate::FETCH_CHUNKS_DEADLINE);
         let response = self
             .inner()
-            .fetch_chunks(fetch_chunks_request)
+            .fetch_chunks(req)
             .await
             .map_err(|err| ApiError::tonic(err, "/FetchChunks failed"))?;
 

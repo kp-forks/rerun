@@ -70,7 +70,15 @@ pub async fn channel(origin: Origin) -> ApiResult<tonic::transport::Channel> {
             .and_then(|ep| ep.tls_config(tls_config))
             .map_err(|err| ApiError::connection_with_source(None, err, "connecting to server"))?
             .http2_adaptive_window(true) // Optimize for throughput
-            .connect_timeout(std::time::Duration::from_secs(10));
+            .connect_timeout(std::time::Duration::from_secs(10))
+            // Send HTTP/2 PINGs every 30s to keep connections alive across NATs / cloud LBs
+            // that silently drop idle TCP. Without a client-side keep-alive, idle long-lived
+            // channels were torn down only when one side's keep-alive eventually fired,
+            // surfacing as confusing "slow" requests on the next call.
+            .http2_keep_alive_interval(std::time::Duration::from_secs(30))
+            .keep_alive_timeout(std::time::Duration::from_secs(20))
+            .keep_alive_while_idle(true)
+            .tcp_keepalive(Some(std::time::Duration::from_secs(30)));
 
         if false {
             // NOTE: Tried it, had no noticeable effects in any of my benchmarks.
