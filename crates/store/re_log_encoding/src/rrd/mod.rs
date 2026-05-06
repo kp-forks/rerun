@@ -65,7 +65,7 @@ pub use self::footer::{
 };
 #[cfg(feature = "decoder")]
 #[cfg(not(target_arch = "wasm32"))]
-pub use self::footer_reader::read_rrd_footer;
+pub use self::footer_reader::{enumerate_rrd_stores, read_rrd_footer};
 pub use self::frames::{
     Compression, CrateVersion, EncodingOptions, MessageHeader, MessageKind, Serializer,
     StreamFooter, StreamFooterEntry, StreamHeader,
