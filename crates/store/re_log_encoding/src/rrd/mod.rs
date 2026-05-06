@@ -58,7 +58,7 @@ pub use self::encoder::{EncodeError, Encoder};
 pub use self::errors::{CodecError, CodecResult, NotAnRrdError, OptionsError};
 #[cfg(feature = "encoder")]
 #[cfg(not(target_arch = "wasm32"))]
-pub use self::file_sink::{FileFlushError, FileSink, FileSinkError};
+pub use self::file_sink::{FileFlushError, FileSink, FileSinkError, FileSinkOptions};
 pub use self::footer::{
     RawRrdManifest, RrdFooter, RrdManifest, RrdManifestBuilder, RrdManifestSha256,
     RrdManifestStaticMap, RrdManifestTemporalMap, RrdManifestTemporalMapEntry,

@@ -673,7 +673,7 @@ class FileSink:
     Save the recording stream to a file.
     """
 
-    def __init__(self, path: str | os.PathLike[str]) -> None:
+    def __init__(self, path: str | os.PathLike[str], *, write_footer: bool = True) -> None:
         """
         Initialize a file sink.
 
@@ -681,6 +681,17 @@ class FileSink:
         ----------
         path:
             Path to write to. The file will be overwritten.
+        write_footer:
+            Whether to emit a complete RRD footer (including a manifest of every chunk) at the
+            end of the stream. Defaults to `True`.
+
+            Producing a footer keeps per-chunk metadata in memory for the lifetime of the sink,
+            which grows linearly with the number of chunks logged. Pass `write_footer=False` for
+            long-running streaming sessions; the resulting file is still a valid RRD and a
+            footer can be added after the fact via `rerun rrd optimize`.
+
+            *Warning*: lack of footer will significantly hurt random-access performance and some
+            tools (e.g. LazyStore) may not work properly.
 
         """
 
@@ -710,6 +721,8 @@ def save(
     path: str,
     default_blueprint: PyMemorySinkStorage | None = None,
     recording: PyRecordingStream | None = None,
+    *,
+    write_footer: bool = True,
 ) -> None:
     """Save the recording stream to a file."""
 
@@ -719,6 +732,8 @@ def save_blueprint(path: str, blueprint_stream: PyRecordingStream) -> None:
 def stdout(
     default_blueprint: PyMemorySinkStorage | None = None,
     recording: PyRecordingStream | None = None,
+    *,
+    write_footer: bool = True,
 ) -> None:
     """Save to stdout."""
 
