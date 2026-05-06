@@ -4414,6 +4414,31 @@ fn generate_archetype_reflection() -> ArchetypeReflectionMap {
             },
         ),
         (
+            ArchetypeName::new("rerun.blueprint.archetypes.TextDocumentFormat"),
+            ArchetypeReflection {
+                display_name: "Text document format",
+                deprecation_summary: None,
+                scope: Some("blueprint"),
+                view_types: &[],
+                fields: vec![
+                    ArchetypeFieldReflection {
+                        name: "monospace",
+                        display_name: "Monospace",
+                        component_type: "rerun.blueprint.components.Enabled".into(),
+                        docstring_md: "Whether to use a monospace font for the document body.\n\nDefaults to disabled.",
+                        flags: ArchetypeFieldFlags::UI_EDITABLE,
+                    },
+                    ArchetypeFieldReflection {
+                        name: "word_wrap",
+                        display_name: "Word wrap",
+                        component_type: "rerun.blueprint.components.Enabled".into(),
+                        docstring_md: "Whether to wrap long lines in the document body.\n\nDefaults to enabled.",
+                        flags: ArchetypeFieldFlags::UI_EDITABLE,
+                    },
+                ],
+            },
+        ),
+        (
             ArchetypeName::new("rerun.blueprint.archetypes.TextLogColumns"),
             ArchetypeReflection {
                 display_name: "Text log columns",
