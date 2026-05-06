@@ -13,6 +13,8 @@ mod dataframe_query_provider_wasm;
 mod dataset_manifest;
 mod errors;
 mod grpc_streaming_provider;
+#[cfg(not(target_arch = "wasm32"))]
+mod pipeline_budget;
 pub(crate) mod pushdown_expressions;
 mod search_provider;
 mod segment_table;

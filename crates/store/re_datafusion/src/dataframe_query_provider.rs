@@ -7,13 +7,15 @@ use std::task::{Context, Poll};
 
 use crate::analytics::{QueryErrorKind, TaskFetchStats};
 use crate::chunk_fetcher::{
-    SortedChunksWithSegment, batch_byte_size, batch_has_any_direct_urls, fetch_batch_direct,
-    fetch_batch_group_via_grpc, split_batch_by_direct_url,
+    SortedChunksWithSegment, batch_byte_size, batch_byte_size_uncompressed,
+    batch_has_any_direct_urls, fetch_batch_direct, fetch_batch_group_via_grpc,
+    split_batch_by_direct_url,
 };
 use crate::dataframe_query_common::{
     DEFAULT_BATCH_BYTES, DEFAULT_BATCH_ROWS, DataframeClientAPI, IndexValuesMap, force_grpc,
     group_chunk_infos_by_segment_id, prepend_string_column_schema,
 };
+use crate::pipeline_budget::PipelineBudget;
 use arrow::array::{
     Array as _, ArrayRef, RecordBatch, RecordBatchOptions, StringArray, UInt64Array,
 };
@@ -116,6 +118,11 @@ pub(crate) struct SegmentStreamExec<T: DataframeClientAPI> {
     /// Pending query analytics — fetch stats are accumulated here.
     /// The event is sent when the last clone is dropped.
     pending_analytics: Option<crate::PendingQueryAnalytics>,
+
+    /// Shared byte budget for end-to-end pipeline backpressure.
+    /// Created once and shared across all partitions so the total memory
+    /// usage is bounded by a single global budget.
+    pipeline_budget: Arc<PipelineBudget>,
 }
 
 use crate::chunk_fetcher::ChunksWithSegment;
@@ -147,6 +154,9 @@ pub struct DataframeSegmentStreamInner<T: DataframeClientAPI> {
 
     /// Pending query analytics — keeps alive until stream completes.
     pending_analytics: Option<crate::PendingQueryAnalytics>,
+
+    /// Shared byte budget for end-to-end pipeline backpressure.
+    pipeline_budget: Arc<PipelineBudget>,
 }
 
 /// This is a temporary fix to minimize the impact of leaking memory
@@ -237,6 +247,7 @@ impl<T: DataframeClientAPI> Stream for DataframeSegmentStream<T> {
             let client = this.client.clone();
             let chunk_infos = this.chunk_infos.clone();
             let pending_analytics = this.pending_analytics.clone();
+            let pipeline_budget = Arc::clone(&this.pipeline_budget);
 
             // Parent the IO pipeline under the original caller's trace via the
             // `attach_trace_context` guard above, not under whichever DataFusion
@@ -246,7 +257,14 @@ impl<T: DataframeClientAPI> Stream for DataframeSegmentStream<T> {
             this.io_join_handle = Some(
                 io_handle.spawn(
                     async move {
-                        chunk_stream_io_loop(client, chunk_infos, chunk_tx, pending_analytics).await
+                        chunk_stream_io_loop(
+                            client,
+                            chunk_infos,
+                            chunk_tx,
+                            pending_analytics,
+                            pipeline_budget,
+                        )
+                        .await
                     }
                     .instrument(io_span),
                 ),
@@ -384,6 +402,12 @@ impl<T: DataframeClientAPI> SegmentStreamExec<T> {
             Boundedness::Bounded,
         );
 
+        // Compute total uncompressed size for adaptive budget before consuming the batches.
+        let total_uncompressed: usize = chunk_info_batches
+            .iter()
+            .map(|b| batch_byte_size_uncompressed(b).unwrap_or_else(|| batch_byte_size(b)))
+            .sum::<u64>() as usize;
+
         let chunk_info = group_chunk_infos_by_segment_id(chunk_info_batches.as_slice())?;
         drop(chunk_info_batches);
 
@@ -402,6 +426,7 @@ impl<T: DataframeClientAPI> SegmentStreamExec<T> {
             trace_headers,
             server_trace_id,
             pending_analytics,
+            pipeline_budget: Arc::new(PipelineBudget::new(total_uncompressed, num_partitions)),
         })
     }
 }
@@ -525,6 +550,7 @@ async fn chunk_store_cpu_worker_thread(
     projected_schema: Arc<Schema>,
     index_values: IndexValuesMap,
     limit: Option<usize>,
+    pipeline_budget: Arc<PipelineBudget>,
 ) -> ApiResult<()> {
     struct CurrentStores {
         segment_id: String,
@@ -611,11 +637,35 @@ async fn chunk_store_cpu_worker_thread(
             continue;
         }
 
-        // When we change segments, flush the outputs
+        // When we change segments, flush the outputs and release the finished
+        // segment's bytes back to the budget so IO can proceed.
+        //
+        // The `release` call uses `ChunkStore::stats().total().total_size_bytes`,
+        // while the IO side reserves using `re_byte_size::SizeBytes::total_size_bytes`
+        // summed per inserted chunk. Both internally invoke the same
+        // `SizeBytes::total_size_bytes` on each `Arc<Chunk>` (see
+        // `ChunkStoreChunkStats::from_chunk`), so per-chunk the metrics
+        // are identical. They diverge only when the store performs
+        // chunk compaction at insert time: an incoming chunk A may be
+        // merged with an existing chunk B into `C = concat(A, B)`,
+        // after which the store's stats reflect `+C - B = A + concat_overhead`
+        // while the IO accounting only added `A`. `concat_overhead` is
+        // strictly non-negative (concatenation allocates new arrow
+        // buffers; it cannot shrink the data), so `store_bytes >= reserved_sum`
+        // a priori. Empirically the overhead is ~0.3-0.5% of decoded
+        // data on representative workloads (see PR #1736 review). This
+        // means `release` may return slightly more than `reserve`
+        // charged, so `current` saturates toward 0 marginally early —
+        // which under-utilises the budget by the same fraction but
+        // poses no OOM or deadlock risk. Treated as benign and not
+        // worth correcting; revisit if the chunk-store internals
+        // change in a way that grows the gap.
         if let Some(current_stores) = current_stores.take_if(|s| s.segment_id != segment_id) {
+            let store_bytes = current_stores.store.read().stats().total().total_size_bytes as usize;
             current_stores
                 .flush(&projected_schema, &output_channel, &mut rows_sent, limit)
                 .await?;
+            pipeline_budget.release(store_bytes);
 
             if limit.is_some_and(|l| rows_sent >= l) {
                 return Ok(());
@@ -650,9 +700,11 @@ async fn chunk_store_cpu_worker_thread(
 
     // Flush out remaining of last segment
     if let Some(current_stores) = current_stores {
+        let store_bytes = current_stores.store.read().stats().total().total_size_bytes as usize;
         current_stores
             .flush(&projected_schema, &output_channel, &mut rows_sent, limit)
             .await?;
+        pipeline_budget.release(store_bytes);
     }
 
     Ok(())
@@ -890,6 +942,7 @@ async fn fetch_remaining_via_grpc<T: DataframeClientAPI>(
     client: &T,
     global_segment_order: &[String],
     output_channel: &Sender<ApiResult<SortedChunksWithSegment>>,
+    pipeline_budget: &PipelineBudget,
 ) -> ApiResult<()> {
     let total_batches = batches.len();
     let mut batches_completed = 0usize;
@@ -899,7 +952,27 @@ async fn fetch_remaining_via_grpc<T: DataframeClientAPI>(
             let bytes: u64 = batch_group.iter().map(batch_byte_size).sum();
             crate::chunk_fetcher::metrics::record_grpc_no_direct_urls(bytes);
         }
+
+        let estimated = batch_group
+            .iter()
+            .map(|b| batch_byte_size_uncompressed(b).unwrap_or_else(|| batch_byte_size(b)))
+            .sum::<u64>() as usize;
+        let guard = pipeline_budget.reserve_guarded(estimated).await;
+        // `?` here is safe: `guard` returns the reservation on drop so an
+        // error from the gRPC fetch does not leak headroom to the shared
+        // cross-partition budget.
         let all_chunks = fetch_batch_group_via_grpc(batch_group, client).await?;
+
+        let actual: usize = all_chunks
+            .iter()
+            .flat_map(|segment_chunks| {
+                segment_chunks
+                    .iter()
+                    .map(|(chunk, _)| re_byte_size::SizeBytes::total_size_bytes(chunk) as usize)
+            })
+            .sum();
+        guard.commit(actual);
+
         batches_completed += batch_group.len();
         if !send_sorted_chunks(all_chunks, global_segment_order, output_channel).await {
             // Consumer (CPU worker) hung up — typically because a row LIMIT was hit
@@ -944,6 +1017,7 @@ async fn chunk_stream_io_loop<T: DataframeClientAPI>(
     chunk_infos: Vec<RecordBatch>,
     output_channel: Sender<ApiResult<SortedChunksWithSegment>>,
     pending_analytics: Option<crate::PendingQueryAnalytics>,
+    pipeline_budget: Arc<PipelineBudget>,
 ) -> ApiResult<()> {
     let target_size_bytes = TARGET_BATCH_SIZE_BYTES as u64;
 
@@ -983,6 +1057,7 @@ async fn chunk_stream_io_loop<T: DataframeClientAPI>(
             &client,
             &global_segment_order,
             &output_channel,
+            &pipeline_budget,
         )
         .await;
 
@@ -1048,12 +1123,23 @@ async fn chunk_stream_io_loop<T: DataframeClientAPI>(
             let http_client = http_client.clone();
             let client = client.clone();
             let pending_analytics = pending_analytics.clone();
+            let pipeline_budget = Arc::clone(&pipeline_budget);
             async move {
                 // Task-local stats buffer — flushed once to the shared atomics
                 // at the end of this task to avoid cross-core cache-line
                 // contention on the hot counters.
                 let mut stats = TaskFetchStats::default();
                 let pending_analytics = pending_analytics.as_ref();
+
+                let estimated = match &task {
+                    FetchTask::Direct(b) | FetchTask::Grpc(b) => batch_byte_size_uncompressed(b)
+                        .unwrap_or_else(|| batch_byte_size(b))
+                        as usize,
+                };
+                // RAII guard: refunds the reservation on any early `return Err(_)`
+                // below so the shared budget keeps its full headroom for other
+                // partitions on fetch failure.
+                let guard = pipeline_budget.reserve_guarded(estimated).await;
 
                 let chunks = match task {
                     FetchTask::Direct(batch) => {
@@ -1101,6 +1187,14 @@ async fn chunk_stream_io_loop<T: DataframeClientAPI>(
                 };
 
                 stats.try_flush_into(pending_analytics, Ok(()));
+                let actual: usize = chunks
+                    .iter()
+                    .flat_map(|seg| {
+                        seg.iter()
+                            .map(|(c, _)| re_byte_size::SizeBytes::total_size_bytes(c) as usize)
+                    })
+                    .sum();
+                guard.commit(actual);
 
                 Ok::<_, ApiError>((task_idx, chunks))
             }
@@ -1195,6 +1289,8 @@ impl<T: DataframeClientAPI> ExecutionPlan for SegmentStreamExec<T> {
         #[cfg(not(target_arch = "wasm32"))]
         let _trace_guard = attach_trace_context(self.trace_headers.as_ref());
 
+        let pipeline_budget = Arc::clone(&self.pipeline_budget);
+
         let (chunk_tx, chunk_rx) = tokio::sync::mpsc::channel(CPU_THREAD_IO_CHANNEL_SIZE);
 
         let random_state = ahash::RandomState::with_seeds(0, 0, 0, 0);
@@ -1241,6 +1337,7 @@ impl<T: DataframeClientAPI> ExecutionPlan for SegmentStreamExec<T> {
                     projected_schema,
                     self.index_values.clone(),
                     limit,
+                    Arc::clone(&pipeline_budget),
                 )
                 .instrument(tracing::info_span!("cpu_worker")),
             ),
@@ -1258,6 +1355,7 @@ impl<T: DataframeClientAPI> ExecutionPlan for SegmentStreamExec<T> {
             trace_headers: self.trace_headers.clone(),
             server_trace_id: self.server_trace_id,
             pending_analytics: self.pending_analytics.clone(),
+            pipeline_budget,
         };
         let stream = DataframeSegmentStream {
             inner: Some(stream),
@@ -1288,6 +1386,7 @@ impl<T: DataframeClientAPI> ExecutionPlan for SegmentStreamExec<T> {
             trace_headers: self.trace_headers.clone(),
             server_trace_id: self.server_trace_id,
             pending_analytics: self.pending_analytics.clone(),
+            pipeline_budget: Arc::clone(&self.pipeline_budget),
         };
 
         plan.props.partitioning = match plan.props.partitioning {

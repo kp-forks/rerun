@@ -8659,6 +8659,7 @@ dependencies = [
  "re_analytics",
  "re_arrow_util",
  "re_backoff",
+ "re_byte_size",
  "re_dataframe",
  "re_format",
  "re_log",

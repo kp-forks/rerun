@@ -244,6 +244,17 @@ pub fn batch_byte_size(batch: &RecordBatch) -> u64 {
         .unwrap_or(0)
 }
 
+/// Sum of `chunk_byte_size_uncompressed` values in a batch, if the column is present.
+///
+/// Returns `None` when the server did not supply uncompressed sizes (older server or
+/// the column was not projected).
+pub fn batch_byte_size_uncompressed(batch: &RecordBatch) -> Option<u64> {
+    batch
+        .column_by_name(QueryDatasetResponse::FIELD_CHUNK_BYTE_LENGTH_UNCOMPRESSED)
+        .and_then(|c| c.as_any().downcast_ref::<UInt64Array>())
+        .map(|arr| arr.iter().map(|v| v.unwrap_or(0)).sum())
+}
+
 /// Fetch a batch of chunks via direct URLs.
 ///
 /// Individual requests are retried up to [`DIRECT_FETCH_MAX_RETRIES`] times on transient errors.
