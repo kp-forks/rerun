@@ -20,7 +20,10 @@ mod table_entry_provider;
 mod wasm_compat;
 
 pub(crate) use self::errors::IntoDfError;
-pub(crate) use analytics::{ConnectionAnalytics, PendingQueryAnalytics};
+pub(crate) use analytics::{
+    ConnectionAnalytics, PendingQueryAnalytics, PendingTableQueryAnalytics,
+};
+pub use analytics::{TableKind, TableQueryCaller};
 pub use catalog_provider::{DEFAULT_CATALOG_NAME, RedapCatalogProvider, get_all_catalog_names};
 pub use dataframe_query_common::{
     DataframeClientAPI, DataframeQueryTableProvider, query_from_query_expression,
