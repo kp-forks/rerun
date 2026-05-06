@@ -3542,19 +3542,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "env_logger"
-version = "0.11.9"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b2daee4ea451f429a58296525ddf28b45a3b64f1acf6587e2067437bb11e218d"
-dependencies = [
- "anstream",
- "anstyle",
- "env_filter",
- "jiff",
- "log",
-]
-
-[[package]]
 name = "epaint"
 version = "0.34.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -8946,14 +8933,13 @@ name = "re_log"
 version = "0.32.0-alpha.1+dev"
 dependencies = [
  "crossbeam",
- "env_filter",
- "env_logger",
- "js-sys",
  "log",
  "log-once",
  "parking_lot",
  "tracing",
- "wasm-bindgen",
+ "tracing-log",
+ "tracing-subscriber",
+ "tracing-web",
 ]
 
 [[package]]
@@ -12729,6 +12715,19 @@ dependencies = [
  "tracing-core",
  "tracing-subscriber",
  "tracy-client",
+]
+
+[[package]]
+name = "tracing-web"
+version = "0.1.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b9e6a141feebd51f8d91ebfd785af50fca223c570b86852166caa3b141defe7c"
+dependencies = [
+ "js-sys",
+ "tracing-core",
+ "tracing-subscriber",
+ "wasm-bindgen",
+ "web-sys",
 ]
 
 [[package]]

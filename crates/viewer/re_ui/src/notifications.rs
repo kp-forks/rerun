@@ -53,9 +53,9 @@ impl NotificationLevel {
 impl From<re_log::Level> for NotificationLevel {
     fn from(value: re_log::Level) -> Self {
         match value {
-            re_log::Level::Trace | re_log::Level::Debug | re_log::Level::Info => Self::Info,
-            re_log::Level::Warn => Self::Warning,
-            re_log::Level::Error => Self::Error,
+            re_log::Level::TRACE | re_log::Level::DEBUG | re_log::Level::INFO => Self::Info,
+            re_log::Level::WARN => Self::Warning,
+            re_log::Level::ERROR => Self::Error,
         }
     }
 }
@@ -68,7 +68,7 @@ fn is_relevant(target: &str, level: re_log::Level) -> bool {
 
     matches!(
         level,
-        re_log::Level::Warn | re_log::Level::Error | re_log::Level::Info
+        re_log::Level::WARN | re_log::Level::ERROR | re_log::Level::INFO
     )
 }
 
