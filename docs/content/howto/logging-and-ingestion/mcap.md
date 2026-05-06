@@ -62,6 +62,7 @@ Each layer extracts different types of information from the MCAP source and each
 - **`schema`**: Extracts metadata about channels, topics, and schemas
 - **`stats`**: Extracts file-level metrics like message counts, time ranges, and channel statistics into `__mcap_properties` in the RRD
 - **`metadata`** Extracts metadata records (if present) into `__mcap_metadata` in the RRD
+- **`attachments`**: Extracts MCAP attachment records (if present) as static data under `__mcap_attachments`
 - **`protobuf`**: Automatically decodes protobuf-encoded messages using reflection
 - **`ros2msg`**: Provides semantic conversion of common ROS2 message types into Rerun's visualization components
 - **`ros2_reflection`**: Automatically decodes ROS2 messages using reflection

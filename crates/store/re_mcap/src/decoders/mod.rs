@@ -1,3 +1,4 @@
+mod attachments;
 mod metadata;
 mod protobuf;
 mod raw;
@@ -13,6 +14,7 @@ use re_chunk::external::nohash_hasher::IntMap;
 use re_chunk::{Chunk, EntityPath};
 use re_log_types::TimeType;
 
+pub use self::attachments::McapAttachmentsDecoder;
 pub use self::metadata::McapMetadataDecoder;
 pub use self::protobuf::McapProtobufDecoder;
 pub use self::raw::McapRawDecoder;
@@ -126,6 +128,21 @@ impl<'a> DecoderContext<'a> {
             .metadata_indexes
             .iter()
             .map(|index| (index, mcap::read::metadata(self.mcap_bytes, index)))
+    }
+
+    /// Iterates attachment records referenced by the summary attachment index.
+    pub fn attachment_records(
+        &self,
+    ) -> impl Iterator<
+        Item = (
+            &'a mcap::records::AttachmentIndex,
+            Result<mcap::Attachment<'a>, mcap::McapError>,
+        ),
+    > + '_ {
+        self.summary
+            .attachment_indexes
+            .iter()
+            .map(|index| (index, mcap::read::attachment(self.mcap_bytes, index)))
     }
 }
 
@@ -432,6 +449,7 @@ impl DecoderRegistry {
         let mut registry = Self::empty()
             // file decoders:
             .register_file_decoder::<McapRecordingInfoDecoder>()
+            .register_file_decoder::<McapAttachmentsDecoder>()
             .register_file_decoder::<McapMetadataDecoder>()
             .register_file_decoder::<McapSchemaDecoder>()
             .register_file_decoder::<McapStatisticDecoder>()
