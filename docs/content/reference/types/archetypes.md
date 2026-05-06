@@ -43,6 +43,7 @@ This page lists all built-in archetypes.
 * [`SeriesLines`](archetypes/series_lines.md): Define the style properties for one or more line series in a chart.
 * [`SeriesPoints`](archetypes/series_points.md): Define the style properties for one or more point series (scatter plot) in a chart.
 * [`Status`](archetypes/status.md): A status update, representing a change in the status of an entity.
+* [`StatusConfiguration`](archetypes/status_configuration.md): Define the style and mapping for status values in a Status view.
 
 ## Spatial 2D
 

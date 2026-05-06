@@ -10207,8 +10207,10 @@ version = "0.32.0-alpha.1+dev"
 dependencies = [
  "egui",
  "re_chunk_store",
+ "re_component_ui",
  "re_log_types",
  "re_sdk_types",
+ "re_selection_panel",
  "re_test_context",
  "re_test_viewport",
  "re_tracing",
@@ -11733,6 +11735,7 @@ checksum = "a2eb9349b6444b326872e140eb1cf5e7c522154d69e7a0ffb0fb81c06b37543f"
 name = "status_example"
 version = "0.31.0-alpha.1+dev"
 dependencies = [
+ "arrow",
  "rerun",
 ]
 

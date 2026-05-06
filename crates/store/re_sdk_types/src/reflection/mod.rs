@@ -3426,6 +3426,45 @@ fn generate_archetype_reflection() -> ArchetypeReflectionMap {
             },
         ),
         (
+            ArchetypeName::new("rerun.archetypes.StatusConfiguration"),
+            ArchetypeReflection {
+                display_name: "Status configuration",
+                deprecation_summary: None,
+                scope: None,
+                view_types: &["StatusView"],
+                fields: vec![
+                    ArchetypeFieldReflection {
+                        name: "values",
+                        display_name: "Values",
+                        component_type: "rerun.components.Text".into(),
+                        docstring_md: "The raw status values that this configuration applies to.\n\nEach entry defines a known status value. The order determines the mapping to\n`labels`, `colors`, and `visible` (by index).",
+                        flags: ArchetypeFieldFlags::UI_EDITABLE,
+                    },
+                    ArchetypeFieldReflection {
+                        name: "labels",
+                        display_name: "Labels",
+                        component_type: "rerun.components.Text".into(),
+                        docstring_md: "Display labels for each status value.\n\nIf provided, the label at index `i` is shown instead of the raw value at index `i`.\nIf not provided or shorter than `values`, the raw value is used as the label.",
+                        flags: ArchetypeFieldFlags::UI_EDITABLE,
+                    },
+                    ArchetypeFieldReflection {
+                        name: "colors",
+                        display_name: "Colors",
+                        component_type: "rerun.components.Color".into(),
+                        docstring_md: "Colors for each status value.\n\nIf provided, the color at index `i` is used for the status at index `i`.\nIf not provided, colors are assigned automatically from a built-in palette.",
+                        flags: ArchetypeFieldFlags::UI_EDITABLE,
+                    },
+                    ArchetypeFieldReflection {
+                        name: "visible",
+                        display_name: "Visible",
+                        component_type: "rerun.components.Visible".into(),
+                        docstring_md: "Visibility for each status value.\n\nIf provided, the visibility at index `i` controls whether the status at index `i` is shown.\nIf not provided, all status values are visible.",
+                        flags: ArchetypeFieldFlags::UI_EDITABLE,
+                    },
+                ],
+            },
+        ),
+        (
             ArchetypeName::new("rerun.archetypes.Tensor"),
             ArchetypeReflection {
                 display_name: "Tensor",
