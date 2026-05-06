@@ -602,8 +602,16 @@ impl PyChunkBatcherConfig {
     #[expect(non_snake_case)]
     #[staticmethod]
     /// Always flushes ASAP.
-    fn ALWAYS() -> Self {
-        Self(ChunkBatcherConfig::ALWAYS)
+    ///
+    /// !!! warning
+    ///     Test-only configuration. Produces an unrealistically large number of chunks and is
+    ///     not suitable for production workloads. With a file sink in particular, per-chunk
+    ///     metadata is accumulated in memory until the SDK process ends and the file footer
+    ///     can be written, which can drive memory usage through the roof. Use
+    ///     [`LOW_LATENCY`][rerun_bindings.ChunkBatcherConfig.LOW_LATENCY] instead for fast
+    ///     flushing in real applications.
+    fn ALWAYS_TEST_ONLY() -> Self {
+        Self(ChunkBatcherConfig::ALWAYS_TEST_ONLY)
     }
 
     #[expect(non_snake_case)]

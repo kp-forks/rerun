@@ -67,6 +67,11 @@ impl crate::sink::LogSink for re_log_encoding::FileSink {
             FileFlushError::Timeout => sink::SinkFlushError::Timeout,
         })
     }
+
+    #[inline]
+    fn defers_finalization_to_shutdown(&self) -> bool {
+        true
+    }
 }
 
 // ---------------

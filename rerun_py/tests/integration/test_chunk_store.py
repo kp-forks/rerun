@@ -34,14 +34,14 @@ def fragmented_rrd_path(tmp_path_factory: pytest.TempPathFactory) -> Path:
     smaller than DATAPLATFORM's `max_rows=65_536`, so the splitter behaves
     visibly differently under the two profiles.
 
-    Uses `ChunkBatcherConfig.ALWAYS()` so the microbatcher cannot coalesce
+    Uses `ChunkBatcherConfig.ALWAYS_TEST_ONLY()` so the microbatcher cannot coalesce
     sends behind our back: each `send_columns` becomes its own chunk.
     """
     rrd_path = tmp_path_factory.mktemp("compact") / "fragmented.rrd"
     with rr.RecordingStream(
         "rerun_example_compact_test",
         recording_id="compact-test-id",
-        batcher_config=rr.ChunkBatcherConfig.ALWAYS(),
+        batcher_config=rr.ChunkBatcherConfig.ALWAYS_TEST_ONLY(),
     ) as rec:
         rec.save(rrd_path)
         for i in range(FRAGMENTED_NUM_ROWS):
