@@ -720,7 +720,6 @@ fn compute_schema_for_query(
     )))
 }
 
-#[tracing::instrument(level = "trace", skip_all)]
 pub(crate) fn prepend_string_column_schema(schema: &Schema, column_name: &str) -> Schema {
     let mut fields = vec![Field::new(column_name, DataType::Utf8, false)];
     fields.extend(schema.fields().iter().map(|f| (**f).clone()));

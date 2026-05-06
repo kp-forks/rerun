@@ -221,6 +221,7 @@ pub(crate) async fn client(
 // in practice.
 pub type ChunksWithSegment = Vec<(Chunk, Option<String>)>;
 
+#[tracing::instrument(level = "debug", skip_all)]
 #[cfg(not(target_arch = "wasm32"))]
 pub fn fetch_chunks_response_to_chunk_and_segment_id(
     response: crate::FetchChunksResponseStream,
@@ -240,9 +241,12 @@ pub fn fetch_chunks_response_to_chunk_and_segment_id(
             tokio::task::spawn_blocking(move || {
                 let _parent_guard = parent_span.enter();
                 let r = resp?;
-                let _span =
-                    tracing::trace_span!("fetch_chunks::batch_decode", num_chunks = r.chunks.len())
-                        .entered();
+                let _span = tracing::trace_span!(
+                    parent: &parent_span,
+                    "fetch_chunks::batch_decode",
+                    num_chunks = r.chunks.len(),
+                )
+                .entered();
 
                 r.chunks
                     .into_iter()

@@ -48,7 +48,7 @@ use tokio::runtime::Handle;
 use tokio::sync::Notify;
 use tokio::sync::mpsc::{Receiver, Sender};
 use tokio::task::JoinHandle;
-use tracing::Instrument as _;
+use tracing::{Instrument as _, instrument};
 
 // TODO(zehiko) make these configurable
 
@@ -140,12 +140,6 @@ pub struct DataframeSegmentStreamInner<T: DataframeClientAPI> {
     /// Passing trace headers between phases of execution pipeline helps keep
     /// the entire operation under a single trace.
     trace_headers: Option<crate::TraceHeaders>,
-
-    /// The `execute` span, captured at stream creation so that work spawned
-    /// later from `poll_next` (notably `chunk_io_pipeline`) stays nested under
-    /// `execute` instead of surfacing as a sibling when `execute`'s entered
-    /// guard has already been dropped.
-    execute_span: tracing::Span,
 
     /// Server-assigned response trace-id for this scan.
     /// This may or may not match request `trace_headers`.
@@ -244,9 +238,10 @@ impl<T: DataframeClientAPI> Stream for DataframeSegmentStream<T> {
             let chunk_infos = this.chunk_infos.clone();
             let pending_analytics = this.pending_analytics.clone();
 
-            // Parent the IO pipeline under `execute`, not under whichever
-            // caller happens to poll us first.
-            let io_span = tracing::info_span!(parent: &this.execute_span, "chunk_io_pipeline");
+            // Parent the IO pipeline under the original caller's trace via the
+            // `attach_trace_context` guard above, not under whichever DataFusion
+            // driver thread happens to poll us first.
+            let io_span = tracing::info_span!("chunk_io_pipeline");
 
             this.io_join_handle = Some(
                 io_handle.spawn(
@@ -423,6 +418,7 @@ impl<T: DataframeClientAPI> SegmentStreamExec<T> {
 const FLUSH_BATCH_ROWS: usize = DEFAULT_BATCH_ROWS;
 const FLUSH_BATCH_BYTES: usize = DEFAULT_BATCH_BYTES as usize;
 
+#[tracing::instrument(level = "trace", skip_all, fields(segment_id = %segment_id))]
 async fn send_next_row_batch(
     query_handle: &mut QueryHandle<StorageEngine>,
     segment_id: &str,
@@ -521,6 +517,7 @@ async fn send_next_row_batch(
 }
 
 // TODO(#10781) - support for sending intermediate results/chunks
+#[instrument(level = "info", skip_all)]
 async fn chunk_store_cpu_worker_thread(
     mut input_channel: Receiver<ApiResult<SortedChunksWithSegment>>,
     output_channel: Sender<RecordBatch>,
@@ -536,7 +533,7 @@ async fn chunk_store_cpu_worker_thread(
     }
 
     impl CurrentStores {
-        #[tracing::instrument(level = "trace", skip_all, fields(segment_id = %segment_id))]
+        #[tracing::instrument(level = "debug", skip_all, fields(segment_id = %segment_id))]
         fn new(
             segment_id: String,
             query_expression: &QueryExpression,
@@ -569,6 +566,7 @@ async fn chunk_store_cpu_worker_thread(
         }
 
         /// Flush all remaining rows from the query handle, respecting the row limit.
+        #[instrument(level = "debug", skip_all)]
         async fn flush(
             mut self,
             projected_schema: &Arc<Schema>,
@@ -696,6 +694,7 @@ type BatchingResult = (Vec<RecordBatch>, Vec<String>);
 /// Returns (batches, `segment_order`) where:
 /// - batches: list of merged `RecordBatch`es, each representing a `target_size` request
 /// - `segment_order`: Original order of segments for preserving segment order
+#[tracing::instrument(level = "info", skip_all, fields(num_chunk_infos = chunk_infos.len(), target_size_bytes))]
 fn create_request_batches(
     chunk_infos: Vec<RecordBatch>,
     target_size_bytes: u64,
@@ -1183,10 +1182,18 @@ impl<T: DataframeClientAPI> ExecutionPlan for SegmentStreamExec<T> {
     ) -> datafusion::common::Result<SendableRecordBatchStream> {
         re_tracing::profile_function!();
 
+        // Attach the remote parent context so any spans created below
+        // (`cpu_worker`, and `chunk_io_pipeline` later in `poll_next`) inherit
+        // the caller's trace.
+        //
+        // We deliberately do NOT open an `execute` tracing span here: `execute`
+        // returns synchronously after spawning the workers (~µs), so an
+        // `execute` span would be a misleading tiny leaf with the heavy
+        // long-running children (`cpu_worker`, `chunk_io_pipeline`) hidden
+        // beneath it. Parent those workers directly under the caller's trace
+        // instead.
         #[cfg(not(target_arch = "wasm32"))]
         let _trace_guard = attach_trace_context(self.trace_headers.as_ref());
-        let execute_span = tracing::info_span!("execute", partition);
-        let _entered = execute_span.enter();
 
         let (chunk_tx, chunk_rx) = tokio::sync::mpsc::channel(CPU_THREAD_IO_CHANNEL_SIZE);
 
@@ -1248,7 +1255,6 @@ impl<T: DataframeClientAPI> ExecutionPlan for SegmentStreamExec<T> {
             io_join_handle: None,
             cpu_join_handle,
             cpu_runtime: Arc::clone(&self.worker_runtime),
-            execute_span: execute_span.clone(),
             trace_headers: self.trace_headers.clone(),
             server_trace_id: self.server_trace_id,
             pending_analytics: self.pending_analytics.clone(),

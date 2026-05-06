@@ -273,7 +273,6 @@ impl<E: StorageEngineLike> QueryHandle<E> {
     /// Lazily initialize internal private state.
     ///
     /// It is important that query handles stay cheap to create.
-    #[tracing::instrument(level = "trace", skip_all)]
     fn init(&self) -> &QueryHandleState {
         self.engine.with(|store, cache| {
             self.state
@@ -300,6 +299,7 @@ impl<E: StorageEngineLike> QueryHandle<E> {
     }
 
     // NOTE: This is split in its own method otherwise it completely breaks `rustfmt`.
+    #[tracing::instrument(level = "trace", skip_all)]
     fn init_(query: &QueryExpression, store: &ChunkStore, cache: &QueryCache) -> QueryHandleState {
         re_tracing::profile_scope!("init");
 

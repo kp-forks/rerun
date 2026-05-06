@@ -456,6 +456,7 @@ fn calculate_adaptive_concurrency(ranges: &[(u64, u64)]) -> usize {
 }
 
 /// Decode a single chunk from raw RRD bytes (protobuf-encoded `ArrowMsg`).
+#[tracing::instrument(level = "debug", skip_all)]
 fn decode_chunk_from_bytes(bytes: &[u8]) -> Result<(Chunk, Option<String>), DirectFetchError> {
     re_tracing::profile_function!();
     use re_log_encoding::Decodable;
