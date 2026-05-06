@@ -17,7 +17,7 @@ impl Decoder for McapRecordingInfoDecoder {
     fn process(
         &mut self,
         ctx: &DecoderContext<'_>,
-        emit: &mut dyn FnMut(Chunk),
+        emit: &(dyn Fn(Chunk) + Send + Sync),
     ) -> std::result::Result<(), Error> {
         let properties = ctx
             .summary()
@@ -46,6 +46,7 @@ mod tests {
     use re_log_types::TimeType;
 
     use crate::DecoderRegistry;
+    use crate::decoders::TestEmitter;
 
     use super::*;
 
@@ -55,16 +56,14 @@ mod tests {
             .expect("failed to read summary")
             .expect("no summary found");
 
-        let mut chunks = Vec::new();
+        let emitter = TestEmitter::default();
         let registry = DecoderRegistry::empty().register_file_decoder::<McapRecordingInfoDecoder>();
         registry
             .plan(buffer, &summary, &crate::TopicFilter::default())
             .expect("failed to plan")
-            .run(buffer, &summary, TimeType::TimestampNs, &mut |chunk| {
-                chunks.push(chunk);
-            })
+            .run(buffer, &summary, TimeType::TimestampNs, &*emitter)
             .expect("failed to run decoder");
-        chunks
+        emitter.finish()
     }
 
     #[test]
