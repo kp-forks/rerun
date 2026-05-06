@@ -965,6 +965,17 @@ fn generate_component_reflection() -> Result<ComponentReflectionMap, Serializati
             },
         ),
         (
+            <IsKeyframe as Component>::name(),
+            ComponentReflection {
+                docstring_md: "Whether a [`components.VideoSample`](https://rerun.io/docs/reference/types/components/video_sample) contains a keyframe (also known as a sync sample or IDR).\n\nA keyframe in this sense must be _decoder re-entrant_: a decoder must be able to start\ndecoding the stream from this sample alone, with no prior decoder state.\nNot every intra-coded frame qualifies. Some codecs have intra-only frames that may\nstill reference existing decoder state and are therefore not valid sync points.\nSee [`components.VideoCodec`](https://rerun.io/docs/reference/types/components/video_codec) for the codec-specific definition of a keyframe.",
+                deprecation_summary: None,
+                custom_placeholder: None,
+                datatype: IsKeyframe::arrow_datatype(),
+                is_enum: false,
+                verify_arrow_array: IsKeyframe::verify_arrow_array,
+            },
+        ),
+        (
             <KeyValuePairs as Component>::name(),
             ComponentReflection {
                 docstring_md: "A map of string keys to string values.\n\nThis component can be used to attach arbitrary metadata or annotations to entities.\nEach key-value pair is stored as a UTF-8 string mapping.\n\n⚠\u{fe0f} **This type is _unstable_ and may change significantly in a way that the data won't be backwards compatible.**",
@@ -3708,6 +3719,13 @@ fn generate_archetype_reflection() -> ArchetypeReflectionMap {
                         display_name: "Sample",
                         component_type: "rerun.components.VideoSample".into(),
                         docstring_md: "Video sample data (also known as \"video chunk\").\n\nThe current timestamp is used as presentation timestamp (PTS) for all data in this sample.\nThere is currently no way to log differing decoding timestamps, meaning\nthat there is no support for B-frames.\nSee <https://github.com/rerun-io/rerun/issues/10090> for more details.\n\nRerun chunks containing frames (i.e. bundles of sample data) may arrive out of order,\nbut may cause the video playback in the Viewer to reset.\nIt is recommended to have all chunks for a video stream to be ordered temporally order.\n\nLogging separate videos on the same entity is allowed iff they share the exact same\ncodec parameters & resolution.\n\nThe samples are expected to be encoded using the `codec` field.\nEach video sample must contain enough data for exactly one video frame\n(this restriction may be relaxed in the future for some codecs).\n\nUnless your stream consists entirely of key-frames (in which case you should consider [`archetypes.EncodedImage`](https://rerun.io/docs/reference/types/archetypes/encoded_image))\nnever log this component as static data as this means that you loose all information of\nprevious samples which may be required to decode an image.\n\nSee [`components.VideoCodec`](https://rerun.io/docs/reference/types/components/video_codec) for codec specific requirements.",
+                        flags: ArchetypeFieldFlags::UI_EDITABLE,
+                    },
+                    ArchetypeFieldReflection {
+                        name: "is_keyframe",
+                        display_name: "Is keyframe",
+                        component_type: "rerun.components.IsKeyframe".into(),
+                        docstring_md: "Whether the corresponding [`components.VideoSample`](https://rerun.io/docs/reference/types/components/video_sample) contains a keyframe.\n\nA keyframe (also known as a sync sample or IDR) is a frame from which a decoder can\nstart decoding the stream with no prior decoder state. See [`components.IsKeyframe`](https://rerun.io/docs/reference/types/components/is_keyframe?speculative-link)\nand [`components.VideoCodec`](https://rerun.io/docs/reference/types/components/video_codec) for the codec-specific definition.\n\nThis field is optional. It does not change how the stream itself is decoded: it is\nmetadata that travels with the sample and can be inspected when querying the data\nback, for example to locate sync points or build a frame index.",
                         flags: ArchetypeFieldFlags::UI_EDITABLE,
                     },
                     ArchetypeFieldReflection {
