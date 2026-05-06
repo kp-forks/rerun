@@ -688,6 +688,29 @@ impl App {
         &self.rx_log
     }
 
+    /// The registry of component UIs used by the viewer.
+    pub fn component_ui_registry_mut(&mut self) -> &mut ComponentUiRegistry {
+        &mut self.component_ui_registry
+    }
+
+    /// Registers runtime reflection metadata for a custom archetype.
+    pub fn add_archetype_reflection(
+        &mut self,
+        archetype_name: re_sdk_types::ArchetypeName,
+        archetype_reflection: re_sdk_types::reflection::ArchetypeReflection,
+    ) {
+        for field in &archetype_reflection.fields {
+            let descriptor = field.component_descriptor(archetype_name);
+            self.reflection
+                .component_identifiers
+                .insert(descriptor.component, descriptor);
+        }
+
+        self.reflection
+            .archetypes
+            .insert(archetype_name, archetype_reflection);
+    }
+
     /// Adds a new view class to the viewer.
     pub fn add_view_class<T: ViewClass + Default + 'static>(
         &mut self,
