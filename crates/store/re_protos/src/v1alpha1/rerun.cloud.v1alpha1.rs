@@ -1859,6 +1859,73 @@ impl ::prost::Name for DebugInfo {
         "/rerun.cloud.v1alpha1.DebugInfo".into()
     }
 }
+/// `ChunkKey` provides chunk location details in the data store.
+///
+/// Returned by `QueryDataset` (in the `chunk_key` Arrow column) and forwarded
+/// back to the server on `FetchChunks`. The `location` payload is opaque and
+/// interpreted per `data_source_kind` (e.g. `RrdChunkLocation` for RRD).
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct ChunkKey {
+    /// Chunk unique identifier
+    #[prost(message, optional, tag = "1")]
+    pub chunk_id: ::core::option::Option<super::super::common::v1alpha1::Tuid>,
+    /// What type of partition is this, rrd, mcap, etc.
+    /// This information determines how to interpret the `location` payload.
+    #[prost(enumeration = "DataSourceKind", tag = "2")]
+    pub data_source_kind: i32,
+    /// The location of the chunk in the data store. Opaque bytes; readers
+    /// decode based on `data_source_kind`.
+    #[prost(bytes = "bytes", optional, tag = "3")]
+    pub location: ::core::option::Option<::prost::bytes::Bytes>,
+    /// ETag of the source object (segment) as observed at registration time.
+    ///
+    /// Optional: legacy registrations and stores that do not return an ETag
+    /// leave this unset.
+    #[prost(string, optional, tag = "4")]
+    pub etag: ::core::option::Option<::prost::alloc::string::String>,
+    /// Wall-clock registration time of the parent segment (nanoseconds since
+    /// the Unix epoch), as recorded in the dataset manifest.
+    ///
+    /// Diagnostic only: not used as a precondition. Lets a client correlate a
+    /// decode failure on a stale chunk handle with a subsequent re-registration
+    /// event without consulting the dataset manifest. Optional: legacy
+    /// registrations leave this unset.
+    #[prost(int64, optional, tag = "5")]
+    pub registration_time_nanos: ::core::option::Option<i64>,
+}
+impl ::prost::Name for ChunkKey {
+    const NAME: &'static str = "ChunkKey";
+    const PACKAGE: &'static str = "rerun.cloud.v1alpha1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "rerun.cloud.v1alpha1.ChunkKey".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/rerun.cloud.v1alpha1.ChunkKey".into()
+    }
+}
+/// RRD-specific decoding of `ChunkKey.location`.
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct RrdChunkLocation {
+    /// Where the chunk is stored (e.g. s3://bucket/file, file:///path/to/file).
+    #[prost(string, optional, tag = "1")]
+    pub url: ::core::option::Option<::prost::alloc::string::String>,
+    /// Byte offset of the chunk within the data source.
+    #[prost(uint64, optional, tag = "2")]
+    pub offset: ::core::option::Option<u64>,
+    /// Chunk length in bytes.
+    #[prost(uint64, optional, tag = "3")]
+    pub length: ::core::option::Option<u64>,
+}
+impl ::prost::Name for RrdChunkLocation {
+    const NAME: &'static str = "RrdChunkLocation";
+    const PACKAGE: &'static str = "rerun.cloud.v1alpha1";
+    fn full_name() -> ::prost::alloc::string::String {
+        "rerun.cloud.v1alpha1.RrdChunkLocation".into()
+    }
+    fn type_url() -> ::prost::alloc::string::String {
+        "/rerun.cloud.v1alpha1.RrdChunkLocation".into()
+    }
+}
 /// Error codes for application level errors
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
 #[repr(i32)]

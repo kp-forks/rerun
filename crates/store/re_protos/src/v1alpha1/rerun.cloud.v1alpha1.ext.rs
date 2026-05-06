@@ -409,10 +409,31 @@ impl QueryDatasetResponse {
     pub const FIELD_CHUNK_KEY: &str = "chunk_key";
     pub const FIELD_CHUNK_ENTITY_PATH: &str = "chunk_entity_path";
     pub const FIELD_CHUNK_IS_STATIC: &str = "chunk_is_static";
+
+    /// Byte offset of the chunk within the source object.
+    ///
+    /// **Deprecated**: this is a denormalized projection of
+    /// [`RrdChunkLocation::offset`](crate::cloud::v1alpha1::ext::RrdChunkLocation),
+    /// which the OSS client now decodes directly out of `FIELD_CHUNK_KEY`.
+    /// Still emitted by the server for compatibility with old clients; new
+    /// code should not read it.
     pub const FIELD_CHUNK_BYTE_OFFSET: &str = "chunk_byte_offset";
+
+    /// Byte length of the chunk within the source object.
+    ///
+    /// **Deprecated**: see [`FIELD_CHUNK_BYTE_OFFSET`](Self::FIELD_CHUNK_BYTE_OFFSET).
+    /// Decode `FIELD_CHUNK_KEY` instead.
     pub const FIELD_CHUNK_BYTE_LENGTH: &str = "chunk_byte_len";
+
     pub const FIELD_CHUNK_BYTE_LENGTH_UNCOMPRESSED: &str = "chunk_byte_size_uncompressed";
+
+    /// Direct (presigned) URL for fetching the source object.
+    ///
+    /// **Note**: server policy field. Presence indicates the server expects
+    /// the client to fetch this row via direct HTTP Range; absence routes the
+    /// row through gRPC `FetchChunks`.
     pub const FIELD_DIRECT_URL: &str = "rerun_layer_direct_url";
+
     pub const FIELD_DIRECT_URL_EXPIRES_AT: &str = "rerun_layer_direct_url_expires_at";
 
     pub fn field_chunk_id() -> FieldRef {
@@ -2995,8 +3016,6 @@ impl From<crate::cloud::v1alpha1::VersionResponse> for VersionResponse {
         }
     }
 }
-
-// ---
 
 #[cfg(test)]
 mod tests {

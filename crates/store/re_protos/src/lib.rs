@@ -50,6 +50,9 @@ mod v1alpha1 {
 
     #[path = "./rerun.cloud.v1alpha1.ext.rs"]
     pub mod rerun_cloud_v1alpha1_ext;
+
+    #[path = "./rerun.cloud.v1alpha1.ext.chunk_key.rs"]
+    pub mod rerun_cloud_v1alpha1_ext_chunk_key;
 }
 
 pub mod common {
@@ -72,6 +75,7 @@ pub mod cloud {
         pub use crate::v1alpha1::rerun_cloud_v1alpha1::*;
         pub mod ext {
             pub use crate::v1alpha1::rerun_cloud_v1alpha1_ext::*;
+            pub use crate::v1alpha1::rerun_cloud_v1alpha1_ext_chunk_key::*;
         }
 
         /// Server-supported feature flags advertised via `VersionResponse.features`.

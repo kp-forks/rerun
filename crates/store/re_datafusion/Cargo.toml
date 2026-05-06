@@ -57,6 +57,7 @@ opentelemetry.workspace = true
 opentelemetry-proto = { workspace = true, features = ["gen-tonic-messages", "trace"] }
 parking_lot.workspace = true
 tokio.workspace = true
+jiff.workspace = true
 tokio-stream.workspace = true
 tonic.workspace = true
 tonic-prost.workspace = true

@@ -1219,3 +1219,48 @@ message DebugInfo {
   // The amount of memory used by the task or service call in bytes
   optional uint64 memory_used = 1;
 }
+
+// `ChunkKey` provides chunk location details in the data store.
+//
+// Returned by `QueryDataset` (in the `chunk_key` Arrow column) and forwarded
+// back to the server on `FetchChunks`. The `location` payload is opaque and
+// interpreted per `data_source_kind` (e.g. `RrdChunkLocation` for RRD).
+message ChunkKey {
+  // Chunk unique identifier
+  rerun.common.v1alpha1.Tuid chunk_id = 1;
+
+  // What type of partition is this, rrd, mcap, etc.
+  // This information determines how to interpret the `location` payload.
+  DataSourceKind data_source_kind = 2;
+
+  // The location of the chunk in the data store. Opaque bytes; readers
+  // decode based on `data_source_kind`.
+  optional bytes location = 3;
+
+  // ETag of the source object (segment) as observed at registration time.
+  //
+  // Optional: legacy registrations and stores that do not return an ETag
+  // leave this unset.
+  optional string etag = 4;
+
+  // Wall-clock registration time of the parent segment (nanoseconds since
+  // the Unix epoch), as recorded in the dataset manifest.
+  //
+  // Diagnostic only: not used as a precondition. Lets a client correlate a
+  // decode failure on a stale chunk handle with a subsequent re-registration
+  // event without consulting the dataset manifest. Optional: legacy
+  // registrations leave this unset.
+  optional int64 registration_time_nanos = 5;
+}
+
+// RRD-specific decoding of `ChunkKey.location`.
+message RrdChunkLocation {
+  // Where the chunk is stored (e.g. s3://bucket/file, file:///path/to/file).
+  optional string url = 1;
+
+  // Byte offset of the chunk within the data source.
+  optional uint64 offset = 2;
+
+  // Chunk length in bytes.
+  optional uint64 length = 3;
+}

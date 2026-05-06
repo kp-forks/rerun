@@ -467,6 +467,10 @@ pub(crate) enum DirectFetchFailureReason {
     Http5xx,
     Connection,
     Decode,
+
+    /// The source object on the blob store changed since the dataset was
+    /// registered.
+    SourceChanged,
     Other,
 }
 
@@ -479,6 +483,7 @@ impl DirectFetchFailureReason {
             Self::Http5xx => "http_5xx",
             Self::Connection => "connection",
             Self::Decode => "decode",
+            Self::SourceChanged => "source_changed",
             Self::Other => "other",
         }
     }
