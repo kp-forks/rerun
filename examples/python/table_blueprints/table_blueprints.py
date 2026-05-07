@@ -3,7 +3,8 @@ Demo for table blueprints & segment previews.
 
 Table blueprints allow configuring table layouts and use segment previews.
 
-**TODO(#12745, #12746): This feature is experimental.** Enable it in the viewer under Settings > Experimental > Grid view as well as Table blueprints.
+**TODO(#12745, #12746): This feature is experimental.** Enable it in the
+viewer under Settings > Experimental > Table cards and blueprints.
 
 Each row can reference a recording via a URI column. The viewer loads those recordings
 on demand and renders them through the embedded blueprint's view definition.
