@@ -1198,6 +1198,13 @@ class _UrdfTreeInternal:
     def get_visual_geometry_paths(self, link: str | _UrdfLinkInternal) -> list[str]: ...
     def log(self, recording: PyRecordingStream | None = None) -> None: ...
     def stream(self, *, include_joint_transforms: bool = True) -> LazyChunkStreamInternal: ...
+    def compute_joint_transform_batches(
+        self,
+        names: pa.Array,
+        values: pa.Array,
+        *,
+        clamp: bool = False,
+    ) -> pa.Array: ...
 
 class _UrdfJointInternal:
     """Internal Rust representation of a URDF joint."""
