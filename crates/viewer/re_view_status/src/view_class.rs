@@ -35,6 +35,18 @@ struct StatusViewState {
     press_on_phase: bool,
 }
 
+impl re_byte_size::SizeBytes for StatusViewState {
+    fn heap_size_bytes(&self) -> u64 {
+        let Self {
+            time_range: _,
+            active_timeline,
+            press_on_phase: _,
+        } = self;
+
+        active_timeline.heap_size_bytes()
+    }
+}
+
 impl ViewState for StatusViewState {
     fn as_any(&self) -> &dyn std::any::Any {
         self

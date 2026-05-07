@@ -1048,7 +1048,10 @@ impl re_byte_size::MemUsageTreeCapture for AppState {
             "blueprint_undo_state",
             self.blueprint_undo_state.total_size_bytes(),
         );
-        tree.add("view_states", self.view_states.total_size_bytes());
+        tree.add(
+            "view_states",
+            re_byte_size::MemUsageTreeCapture::capture_mem_usage_tree(&self.view_states),
+        );
         tree.into_tree()
     }
 }

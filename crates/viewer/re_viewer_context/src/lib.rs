@@ -155,6 +155,7 @@ pub mod external {
 }
 
 // Re-export
+pub use re_byte_size::SizeBytes;
 pub use re_chunk_store::MissingChunkReporter;
 
 // ---------------------------------------------------------------------------

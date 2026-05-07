@@ -28,6 +28,18 @@ pub struct Eye {
     pub fov_y: Option<f32>,
 }
 
+impl re_byte_size::SizeBytes for Eye {
+    #[inline]
+    fn heap_size_bytes(&self) -> u64 {
+        0
+    }
+
+    #[inline]
+    fn is_pod() -> bool {
+        true
+    }
+}
+
 impl Eye {
     pub const DEFAULT_FOV_Y: f32 = 55.0_f32 * std::f32::consts::TAU / 360.0;
 
@@ -158,6 +170,13 @@ struct EyeInterpolation {
     start: Eye,
 }
 
+impl re_byte_size::SizeBytes for EyeInterpolation {
+    #[inline]
+    fn heap_size_bytes(&self) -> u64 {
+        0
+    }
+}
+
 impl EyeInterpolation {
     pub fn target_time(start: &Eye, stop: &Eye) -> Option<f32> {
         // Take more time if the rotation is big:
@@ -210,6 +229,27 @@ pub struct EyeState {
     pub last_look_target: Option<Vec3>,
     pub last_orbit_radius: Option<f32>,
     pub last_eye_up: Option<Vec3>,
+}
+
+impl re_byte_size::SizeBytes for EyeState {
+    fn heap_size_bytes(&self) -> u64 {
+        let Self {
+            fov_y: _,
+            velocity: _,
+            last_tracked_entity,
+            interpolation,
+            spin: _,
+            last_eye,
+            last_interaction_time: _,
+            last_look_target: _,
+            last_orbit_radius: _,
+            last_eye_up: _,
+        } = self;
+
+        last_tracked_entity.heap_size_bytes()
+            + interpolation.heap_size_bytes()
+            + last_eye.heap_size_bytes()
+    }
 }
 
 /// Utility struct for handling eye control parameter changes,

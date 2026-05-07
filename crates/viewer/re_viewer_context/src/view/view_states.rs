@@ -5,6 +5,7 @@
 
 use ahash::HashMap;
 
+use re_byte_size::SizeBytes as _;
 use re_log_types::{StoreId, TimeReal};
 
 use crate::blueprint_helpers::AppBlueprintCtx;
@@ -34,6 +35,16 @@ pub struct PreviewState {
 
     /// IDs of recordings currently registered as preview clips.
     recording_ids: ahash::HashSet<StoreId>,
+}
+
+impl re_byte_size::SizeBytes for PreviewState {
+    fn heap_size_bytes(&self) -> u64 {
+        let Self {
+            time_ctrl,
+            recording_ids,
+        } = self;
+        time_ctrl.heap_size_bytes() + recording_ids.heap_size_bytes()
+    }
 }
 
 impl Default for PreviewState {
@@ -140,14 +151,42 @@ impl re_byte_size::SizeBytes for ViewStates {
     fn heap_size_bytes(&self) -> u64 {
         let Self {
             states,
-            visualizer_reports: visualizer_errors,
-            preview: _,
+            visualizer_reports,
+            preview,
         } = self;
-        states
+        states.heap_size_bytes() + visualizer_reports.heap_size_bytes() + preview.heap_size_bytes()
+    }
+}
+
+impl re_byte_size::MemUsageTreeCapture for ViewStates {
+    fn capture_mem_usage_tree(&self) -> re_byte_size::MemUsageTree {
+        let Self {
+            states,
+            visualizer_reports,
+            preview,
+        } = self;
+
+        let mut state_sizes = states
             .iter()
-            .map(|(key, state)| key.total_size_bytes() + state.size_bytes())
-            .sum::<u64>()
-            + visualizer_errors.heap_size_bytes()
+            .map(|((store_id, view_id), state)| {
+                (
+                    format!("{store_id:?}/{view_id:?}"),
+                    state.total_size_bytes(),
+                )
+            })
+            .collect::<Vec<_>>();
+        state_sizes.sort_by(|(lhs, _), (rhs, _)| lhs.cmp(rhs));
+
+        let mut states_node = re_byte_size::MemUsageNode::default();
+        for (name, size_bytes) in state_sizes {
+            states_node.add(name, size_bytes);
+        }
+
+        let mut node = re_byte_size::MemUsageNode::default();
+        node.add("states", states_node.into_tree());
+        node.add("visualizer_reports", visualizer_reports.heap_size_bytes());
+        node.add("preview", preview.heap_size_bytes());
+        node.with_total_size_bytes(self.total_size_bytes())
     }
 }
 

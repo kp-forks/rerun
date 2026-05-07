@@ -99,6 +99,18 @@ struct TimeState {
     view: Option<TimeView>,
 }
 
+impl re_byte_size::SizeBytes for TimeState {
+    #[inline]
+    fn heap_size_bytes(&self) -> u64 {
+        0
+    }
+
+    #[inline]
+    fn is_pod() -> bool {
+        true
+    }
+}
+
 impl TimeState {
     fn new(time: impl Into<TimeReal>) -> Self {
         Self {
@@ -205,6 +217,22 @@ impl Default for TimeControl {
             loop_mode: LoopMode::Off,
             highlighted_range: None,
         }
+    }
+}
+
+impl re_byte_size::SizeBytes for TimeControl {
+    fn heap_size_bytes(&self) -> u64 {
+        let Self {
+            timeline: _,
+            states,
+            playing: _,
+            following: _,
+            buffer_behavior: _,
+            speed: _,
+            loop_mode: _,
+            highlighted_range: _,
+        } = self;
+        states.heap_size_bytes()
     }
 }
 
