@@ -31,7 +31,7 @@ def fragmented_rrd_path(tmp_path_factory: pytest.TempPathFactory) -> Path:
     RRD with `FRAGMENTED_NUM_ROWS` sorted scalar rows on /sensor, one chunk per row.
 
     Row count is sized to be larger than LIVE's `max_rows=4096` ceiling and
-    smaller than DATAPLATFORM's `max_rows=65_536`, so the splitter behaves
+    smaller than OBJECT_STORE's `max_rows=65_536`, so the splitter behaves
     visibly differently under the two profiles.
 
     Uses `ChunkBatcherConfig.ALWAYS_TEST_ONLY()` so the microbatcher cannot coalesce
@@ -263,17 +263,17 @@ def test_collect_preserves_row_count(fragmented_rrd_path: Path) -> None:
     assert optimized_rows == default_rows
 
 
-def test_collect_with_dataplatform_profile_uses_dataplatform_thresholds(fragmented_rrd_path: Path) -> None:  # NOLINT
+def test_collect_with_object_store_profile_uses_object_store_thresholds(fragmented_rrd_path: Path) -> None:  # NOLINT
     """
-    End-to-end plumbing: DATAPLATFORM's larger thresholds reach the resulting ChunkStore.
+    End-to-end plumbing: OBJECT_STORE's larger thresholds reach the resulting ChunkStore.
 
-    Proves the precedence chain `OptimizationProfile.DATAPLATFORM → PyO3 → ChunkStoreConfig`
+    Proves the precedence chain `OptimizationProfile.OBJECT_STORE → PyO3 → ChunkStoreConfig`
     forwards concrete values (no silent fallback to DEFAULT/LIVE) by checking
     that the `chunk_max_rows` threshold is *enforced* on the /sensor chunks:
 
     - LIVE caps every chunk at 4096 rows.
-    - DATAPLATFORM lets at least one chunk hold more than 4096 rows. If
-      DATAPLATFORM's value did not reach the store, splitting would have
+    - OBJECT_STORE lets at least one chunk hold more than 4096 rows. If
+      OBJECT_STORE's value did not reach the store, splitting would have
       capped it at 4096 too.
 
     This avoids relying on compaction heuristics converging to a specific
@@ -282,26 +282,26 @@ def test_collect_with_dataplatform_profile_uses_dataplatform_thresholds(fragment
     """
     reader = RrdReader(fragmented_rrd_path)
     live = reader.stream().collect(optimize=OptimizationProfile.LIVE)
-    data_platform = reader.stream().collect(optimize=OptimizationProfile.DATAPLATFORM)
+    object_store = reader.stream().collect(optimize=OptimizationProfile.OBJECT_STORE)
 
     def sensor_rows(s: ChunkStore) -> list[int]:
         return [c.num_rows for c in s.stream().to_chunks() if str(c.entity_path) == "/sensor"]
 
     live_sensor = sensor_rows(live)
-    data_platform_sensor = sensor_rows(data_platform)
+    object_store_sensor = sensor_rows(object_store)
 
     # Schema and total /sensor row count preserved across profiles.
-    assert live.schema() == data_platform.schema()
-    assert sum(live_sensor) == sum(data_platform_sensor) == FRAGMENTED_NUM_ROWS
+    assert live.schema() == object_store.schema()
+    assert sum(live_sensor) == sum(object_store_sensor) == FRAGMENTED_NUM_ROWS
 
     # LIVE enforces its 4096 row ceiling on every chunk.
     assert all(n <= 4096 for n in live_sensor), f"LIVE must respect max_rows=4096: {live_sensor}"
 
-    # DATAPLATFORM's higher 65_536 ceiling lets at least one chunk exceed 4096
-    # rows, proving the DATAPLATFORM value reached the store. (If DATAPLATFORM's
+    # OBJECT_STORE's higher 65_536 ceiling lets at least one chunk exceed 4096
+    # rows, proving the OBJECT_STORE value reached the store. (If OBJECT_STORE's
     # value were lost, the splitter would have capped chunks at 4096 just like LIVE.)
-    assert any(n > 4096 for n in data_platform_sensor), (
-        f"expected at least one chunk >4096 rows under DATAPLATFORM profile, got {data_platform_sensor}"
+    assert any(n > 4096 for n in object_store_sensor), (
+        f"expected at least one chunk >4096 rows under OBJECT_STORE profile, got {object_store_sensor}"
     )
 
 

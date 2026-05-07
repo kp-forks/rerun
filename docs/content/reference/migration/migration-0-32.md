@@ -105,9 +105,9 @@ To output columns to multiple entities from a single component, multiple lenses 
 `rerun rrd compact` is now `rerun rrd optimize`.
 
 A new `--profile` argument has been added to opt to known good values.
-Two profiles are available: `live` (optimized for the live Viewer workflow, same as previous defaults) and `dataplatform` (optimized for querying and streaming from the Data Platform). <!-- NOLINT -->
+Two profiles are available: `live` (optimized for the live Viewer workflow, same as previous defaults) and `object-store` (optimized for querying and streaming from object-store-backed storage, e.g. the Rerun Data Platform). <!-- NOLINT -->
 
-By default, the `dataplatform` profile is now used. Use `--profile live` to keep the previous behavior. <!-- NOLINT -->
+By default, the `object-store` profile is now used. Use `--profile live` to keep the previous behavior. <!-- NOLINT -->
 
 ## `DatasetEntry.register` requires a sequence of URIs (Python)
 

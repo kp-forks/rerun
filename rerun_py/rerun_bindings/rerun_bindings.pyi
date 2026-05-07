@@ -258,11 +258,11 @@ def _optimization_profile_values(name: str) -> dict[str, object]:
     Test-only: return a dict of the Rust `OptimizationProfile::<NAME>` field values.
 
     Used by the Python parity test to confirm that
-    `OptimizationProfile.{LIVE,DATAPLATFORM}` on the Python side stays in sync
+    `OptimizationProfile.{LIVE,OBJECT_STORE}` on the Python side stays in sync
     with the Rust constants this module forwards into `ChunkStoreConfig` /
     `CompactionOptions` above.
 
-    Names: `"LIVE"`, `"DATAPLATFORM"`.
+    Names: `"LIVE"`, `"OBJECT_STORE"`.
     """
 
 # AI generated stubs for `PyRecordingStream` related class and functions

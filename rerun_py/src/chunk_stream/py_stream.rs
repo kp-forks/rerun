@@ -391,11 +391,11 @@ fn write_rrd_compiled(
 /// Test-only: return a dict of the Rust `OptimizationProfile::<NAME>` field values.
 ///
 /// Used by the Python parity test to confirm that
-/// `OptimizationProfile.{LIVE,DATAPLATFORM}` on the Python side stays in sync
+/// `OptimizationProfile.{LIVE,OBJECT_STORE}` on the Python side stays in sync
 /// with the Rust constants this module forwards into `ChunkStoreConfig` /
 /// `CompactionOptions` above.
 ///
-/// Names: `"LIVE"`, `"DATAPLATFORM"`.
+/// Names: `"LIVE"`, `"OBJECT_STORE"`.
 #[pyfunction]
 pub fn _optimization_profile_values<'py>(
     py: Python<'py>,
@@ -403,7 +403,7 @@ pub fn _optimization_profile_values<'py>(
 ) -> PyResult<Bound<'py, PyDict>> {
     let p = match name {
         "LIVE" => OptimizationProfile::LIVE,
-        "DATAPLATFORM" => OptimizationProfile::DATAPLATFORM,
+        "OBJECT_STORE" => OptimizationProfile::OBJECT_STORE,
         other => {
             return Err(PyValueError::new_err(format!(
                 "unknown profile name: {other}"

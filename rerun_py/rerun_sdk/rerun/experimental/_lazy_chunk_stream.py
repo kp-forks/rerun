@@ -277,7 +277,7 @@ class LazyChunkStream:
 
         By default, only the single-pass compaction that happens naturally
         during chunk insertion is applied. Pass `optimize=OptimizationProfile.LIVE`
-        or `optimize=OptimizationProfile.DATAPLATFORM` to run additional
+        or `optimize=OptimizationProfile.OBJECT_STORE` to run additional
         optimization (extra convergence passes, video GoP rebatching) tuned for
         the chosen target.
 
@@ -291,10 +291,10 @@ class LazyChunkStream:
 
         Examples
         --------
-        Run with the Data Platform-tuned profile:
+        Run with the object-store-tuned profile:
 
         ```python
-        store = reader.stream().collect(optimize=OptimizationProfile.DATAPLATFORM)
+        store = reader.stream().collect(optimize=OptimizationProfile.OBJECT_STORE)
         ```
 
         """
