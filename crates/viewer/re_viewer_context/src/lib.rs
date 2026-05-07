@@ -117,8 +117,9 @@ pub use self::store_view_context::StoreViewContext;
 pub use self::tables::{TableStore, TableStores};
 pub use self::tensor::{ImageStats, TensorStats};
 pub use self::time_control::{
-    MoveDirection, MoveSpeed, TIME_PANEL_PATH, TimeControl, TimeControlCommand,
-    TimeControlResponse, TimeControlUpdateParams, TimeView, time_panel_blueprint_entity_path,
+    MoveDirection, MoveSpeed, PreviewRecordingsDb, TIME_PANEL_PATH, TimeControl,
+    TimeControlCommand, TimeControlDb, TimeControlResponse, TimeControlUpdateParams, TimeView,
+    time_panel_blueprint_entity_path,
 };
 pub use self::typed_entity_collections::{
     BufferAndFormatMatch, DatatypeMatch, IndicatedEntities, PerVisualizerInstruction,
@@ -132,7 +133,7 @@ pub use self::utils::{
 };
 pub use self::view::{
     BufferAndFormatConstraint, DataResult, IdentifiedViewSystem, OptionalViewEntityHighlight,
-    PerSystemEntities, RecommendedMappings, RecommendedView, RecommendedVisualizers,
+    PerSystemEntities, PreviewState, RecommendedMappings, RecommendedView, RecommendedVisualizers,
     SingleRequiredComponentConstraint, SystemExecutionOutput, ViewClass, ViewClassExt,
     ViewClassLayoutPriority, ViewClassPlaceholder, ViewClassRegistry, ViewClassRegistryError,
     ViewContext, ViewContextCollection, ViewContextSystem, ViewContextSystemOncePerFrameResult,
