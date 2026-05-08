@@ -50,7 +50,10 @@ Rerun now supports 2D grid maps, as used e.g. in robot mapping & navigation appl
 * The visualizer also supports the colormap options that RViz users are familiar with, selectable at log time or in the viewer / blueprint.
 * In a 3D scene, the map appears at the entity's coordinate frame (either entity-path based or with TF-style named frame like `CoordinateFrame("map")`). Additionally, an optional translation & rotation offset can be specified.
 
-🧢 Rerun's MCAP importer automatically loads ROS 2 `nav_msgs/OccupancyGrid` messages as `GridMap`s.
+For ROS 2 users:
+* 🧢 Rerun's MCAP importer automatically loads ROS 2 `nav_msgs/OccupancyGrid` messages as `GridMap`s.
+* 📖 Our [ROS 2 guide](https://rerun.io/docs/howto/integrations/ros2-nav-turtlebot) also shows an example how you can log `GridMap` from your custom ROS nodes.
+
 Here's a demo video showing a typical ROS 2 MCAP recording with multiple map and costmap layers in Rerun:
 
 <!-- https://static.rerun.io/9e9a2cce0b76c8bde35edc0b85dfbaa0dd1db6ec_grid_map_release_0.32.mp4 -->
