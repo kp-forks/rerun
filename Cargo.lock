@@ -9058,6 +9058,7 @@ dependencies = [
  "arrow",
  "byteorder",
  "cdr-encoding",
+ "crossbeam",
  "insta",
  "mcap",
  "prost-reflect",
