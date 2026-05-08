@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import os
-from collections.abc import Callable, Iterator
+from collections.abc import Callable, Iterable, Iterator
 from datetime import datetime, timedelta
 from enum import Enum
 from pathlib import Path
@@ -873,11 +873,16 @@ def send_arrow_chunk(
         A dictionary mapping component types to their values.
     """
 
-def send_chunk(
-    chunk: ChunkInternal,
+def send_chunks(
+    chunks: ChunkInternal | Iterable[ChunkInternal],
     recording: PyRecordingStream | None = None,
 ) -> None:
-    """Send a pre-built chunk to the recording stream."""
+    """
+    Send chunks to the recording stream.
+
+    Accepts a single chunk or any iterable of chunks. Blocks until every chunk
+    has been pushed to the recording's batcher.
+    """
 
 def log_file_from_path(
     file_path: str | os.PathLike[str],
@@ -1713,6 +1718,14 @@ class LazyChunkStreamInternal:
     def __iter__(self) -> LazyChunkStreamIterator: ...
     @staticmethod
     def from_iter(iterable: Any) -> LazyChunkStreamInternal: ...
+    def send_to_recording(self, recording: PyRecordingStream | None = None) -> None:
+        """
+        Drain this stream into a recording stream.
+
+        If `recording` is `None`, the active recording is used. Blocks until every
+        chunk has been pushed to the recording's batcher. A silent no-op when
+        there is no active recording.
+        """
 
 class LazyChunkStreamIterator:
     """Iterator over chunks from a compiled stream."""

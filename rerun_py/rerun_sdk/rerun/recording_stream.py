@@ -25,10 +25,10 @@ if TYPE_CHECKING:
 
     from rerun import AsComponents, BlueprintLike, ComponentColumn, DescribedComponentBatch as DescribedComponentBatch
     from rerun._memory import MemoryRecording
+    from rerun.experimental import Chunk, ChunkStore, LazyChunkStream, LazyStore
     from rerun.sinks import LogSinkLike
 
     from ._send_columns import TimeColumnLike as TimeColumnLike
-
 
 # TODO(#3793): defaulting recording_id to authkey should be opt-in
 
@@ -1193,12 +1193,40 @@ class RecordingStream:
 
         send_columns(entity_path=entity_path, indexes=indexes, columns=columns, strict=strict, recording=self)
 
-    def send_chunk(self, chunk: rr.experimental.Chunk) -> None:
-        """Send a pre-built [`Chunk`][rerun.experimental.Chunk] to this recording stream."""
+    def send_chunks(
+        self,
+        chunks: Chunk | LazyChunkStream | LazyStore | ChunkStore | Iterable[Chunk],
+    ) -> None:
+        """
+        Send chunks to this recording stream. Blocks until every chunk has been queued.
 
-        from .experimental._send_chunk import send_chunk
+        See [`rerun.experimental.send_chunks`][].
 
-        send_chunk(chunk, recording=self)
+        !!! note
+            For a `LazyChunkStream` and `LazyStore` inputs, this call triggers execution
+            and/or loading and will block for the duration of this process.
+
+        Parameters
+        ----------
+        chunks:
+            One of:
+
+            - A single [`Chunk`][rerun.experimental.Chunk].
+            - A [`LazyChunkStream`][rerun.experimental.LazyChunkStream] — consume
+              the stream and forward all chunks to this recording stream.
+            - A [`LazyStore`][rerun.experimental.LazyStore] — send all chunks to this
+              recording stream. This triggers loading all chunks from the source.
+            - A [`ChunkStore`][rerun.experimental.ChunkStore] — send all chunks to
+              this recording stream (fast since all chunks are already loaded).
+            - Any iterable of `Chunk` objects.
+
+            Source store identity (`application_id`, `recording_id`) is **not**
+            preserved: chunks adopt this recording's identity.
+
+        """
+        from .experimental._send_chunks import send_chunks
+
+        send_chunks(chunks, recording=self)
 
     def send_record_batch(self, batch: pa.RecordBatch) -> None:
         """Coerce a single pyarrow `RecordBatch` to Rerun structure."""
