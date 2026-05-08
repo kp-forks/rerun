@@ -2045,7 +2045,7 @@ You can now log URDF files directly to Rerun using the `log_file` API.
 
 #### 🐍 Python API
 - Add `Dataset.register_batch` and wrappers for task ids [#9895](https://github.com/rerun-io/rerun/pull/9895)
-- Introduce `ConnectionRegistry` for centralised redap client and token management [#10078](https://github.com/rerun-io/rerun/pull/10078)
+- Introduce `ConnectionRegistry` for centralized redap client and token management [#10078](https://github.com/rerun-io/rerun/pull/10078)
 - Build in `manylinux_2_28` container [#10148](https://github.com/rerun-io/rerun/pull/10148)
 - Add APIs to Dataset to query and update the associated blueprint [#10156](https://github.com/rerun-io/rerun/pull/10156)
 - Support for seconds-since-Epoch numpy arrays for constructing `TimeColumn` [#10168](https://github.com/rerun-io/rerun/pull/10168) (thanks [@MichaelGrupp](https://github.com/MichaelGrupp)!)
