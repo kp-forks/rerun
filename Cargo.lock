@@ -8685,7 +8685,6 @@ dependencies = [
  "tokio-stream",
  "tonic",
  "tonic-prost",
- "tonic-web-wasm-client",
  "tracing",
  "wasm-bindgen-futures",
  "web-time",
