@@ -46,7 +46,13 @@ TODO(michael): please fill out
 
 #### OSS catalog server now streams from disk
 
-TODO(ab): please fill out
+The OSS server (`rerun server` and `rr.server.Server`) no longer eagerly loads RRDs in memory when registering datasets.
+It instead uses the manifest embedded in the RRDs to load chunks on demand when serving requests.
+This greatly extends the amount of data that can be registered and queried for a given memory budget, and makes registration orders of magnitude faster.
+
+_Note_: This requires the RRDs to have a manifest, which most modern RRDs have.
+Legacy RRDs are still eagerly loaded.
+Use the `rerun rrd optimize` CLI to migrate and optimize legacy RRDs.
 
 #### Plot improvements
 
