@@ -8879,6 +8879,7 @@ name = "re_integration_test"
 version = "0.32.0-alpha.1+dev"
 dependencies = [
  "arrow",
+ "datafusion",
  "egui",
  "egui_kittest",
  "egui_tiles",
@@ -8888,7 +8889,9 @@ dependencies = [
  "parking_lot",
  "re_build_info",
  "re_dataframe_ui",
+ "re_datafusion",
  "re_log_encoding",
+ "re_log_types",
  "re_protos",
  "re_redap_client",
  "re_sdk",
