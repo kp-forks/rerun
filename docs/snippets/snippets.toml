@@ -349,6 +349,10 @@ backwards_check = [
   "cpp", # Missing examples
   "rust", # Missing examples
 ]
+"archetypes/grid_map_pose" = [
+  "cpp", # Missing examples
+  "rust", # Missing examples
+]
 "archetypes/entity_behavior" = [
   "cpp", # Blueprint API doesn't exist for C++/Rust
   "rust", # Blueprint API doesn't exist for C++/Rust

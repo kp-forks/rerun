@@ -32,9 +32,21 @@ This archetype is intended for robotics applications like occupancy maps or navi
  * 🐍 [Python API docs for `GridMap`](https://ref.rerun.io/docs/python/stable/common/archetypes?speculative-link#rerun.archetypes.GridMap)
  * 🦀 [Rust API docs for `GridMap`](https://docs.rs/rerun/latest/rerun/archetypes/struct.GridMap.html?speculative-link)
 
-## Example
+## Examples
 
 ### Simple occupancy grid map
 
 snippet: archetypes/grid_map_simple
+
+### Log a grid map at a specific pose
+
+snippet: archetypes/grid_map_pose
+
+<picture data-inline-viewer="snippets/archetypes/grid_map_pose">
+  <source media="(max-width: 480px)" srcset="https://static.rerun.io/grid_map_pose/55eeb468043da65a1c678f97048dca8545806983/480w.png">
+  <source media="(max-width: 768px)" srcset="https://static.rerun.io/grid_map_pose/55eeb468043da65a1c678f97048dca8545806983/768w.png">
+  <source media="(max-width: 1024px)" srcset="https://static.rerun.io/grid_map_pose/55eeb468043da65a1c678f97048dca8545806983/1024w.png">
+  <source media="(max-width: 1200px)" srcset="https://static.rerun.io/grid_map_pose/55eeb468043da65a1c678f97048dca8545806983/1200w.png">
+  <img src="https://static.rerun.io/grid_map_pose/55eeb468043da65a1c678f97048dca8545806983/full.png">
+</picture>
 
