@@ -1,9 +1,13 @@
-use re_log_types::{EntityPath, TimeCell, TimeReal, TimeType, TimelineName, TimestampFormat};
-use re_ui::{Help, icons};
+use re_log_types::{
+    AbsoluteTimeRange, EntityPath, TimeCell, TimeInt, TimeReal, TimeType, TimelineName,
+    TimestampFormat,
+};
+use re_time_ruler::TimeRangesUi;
+use re_ui::{Help, UiExt as _, icons};
 use re_viewer_context::{
-    DataResultInteractionAddress, IdentifiedViewSystem as _, Item, TimeControlCommand, ViewClass,
-    ViewClassLayoutPriority, ViewClassRegistryError, ViewId, ViewQuery, ViewSpawnHeuristics,
-    ViewState, ViewStateExt as _, ViewSystemExecutionError, ViewerContext,
+    DataResultInteractionAddress, IdentifiedViewSystem as _, Item, TimeControlCommand, TimeView,
+    ViewClass, ViewClassLayoutPriority, ViewClassRegistryError, ViewId, ViewQuery,
+    ViewSpawnHeuristics, ViewState, ViewStateExt as _, ViewSystemExecutionError, ViewerContext,
 };
 
 use crate::data::{StatusLane, StatusLanesData};
@@ -20,13 +24,12 @@ const TOP_MARGIN: f32 = 4.0;
 /// View state for pan/zoom.
 #[derive(Default)]
 struct StatusViewState {
-    /// Visible time range: (min, max) in timeline units.
-    /// `None` means "fit all data".
-    /// TODO(RR-4291): use the same timeline code as the timeline panel
-    time_range: Option<(f64, f64)>,
+    /// Visible time range, in the same representation as the timeline panel.
+    /// `None` means "fit all data" — populated on the next frame from the data range.
+    time_view: Option<TimeView>,
 
     /// The timeline we last rendered. When the active timeline changes,
-    /// we reset `time_range` so the view auto-fits to the new data.
+    /// we reset `time_view` so the view auto-fits to the new data.
     active_timeline: Option<TimelineName>,
 
     /// `true` if the current primary-button press landed on a phase rectangle.
@@ -38,7 +41,7 @@ struct StatusViewState {
 impl re_byte_size::SizeBytes for StatusViewState {
     fn heap_size_bytes(&self) -> u64 {
         let Self {
-            time_range: _,
+            time_view: _,
             active_timeline,
             press_on_phase: _,
         } = self;
@@ -141,10 +144,10 @@ impl ViewClass for StatusView {
 
         let state = state.downcast_mut::<StatusViewState>()?;
 
-        // Reset time range when the active timeline changes.
+        // Reset the view when the active timeline changes.
         if state.active_timeline.as_ref() != Some(&query.timeline) {
             state.active_timeline = Some(query.timeline);
-            state.time_range = None;
+            state.time_view = None;
         }
 
         // Collect all lanes from all visualizers.
@@ -168,12 +171,17 @@ impl ViewClass for StatusView {
         //      We should use an estimation so that the latest state is still somewhat visible. Maybe also consider
         //      the density of states? An idea is to keep as much space for the last state as the average state
         //      duration on the screen.
-        if state.time_range.is_none() {
+        if state.time_view.is_none() {
             let padding = (data_max - data_min).max(1.0) * 0.05;
-            state.time_range = Some((data_min - padding, data_max + padding));
+            let min = data_min - padding;
+            let max = data_max + padding;
+            state.time_view = Some(TimeView {
+                min: TimeReal::from(min),
+                time_spanned: max - min,
+            });
         }
 
-        let Some((mut t_min, mut t_max)) = state.time_range else {
+        let Some(mut time_view) = state.time_view else {
             return Ok(());
         };
 
@@ -185,26 +193,37 @@ impl ViewClass for StatusView {
             return Ok(());
         }
 
-        // Lane drawing area (above the time axis).
-        let lanes_rect = egui::Rect::from_min_max(
-            rect.left_top(),
-            egui::pos2(rect.right(), rect.bottom() - TIME_AXIS_HEIGHT),
-        );
+        // Layout: ruler at the top, lanes below.
         let time_axis_rect = egui::Rect::from_min_max(
-            egui::pos2(rect.left(), rect.bottom() - TIME_AXIS_HEIGHT),
+            rect.left_top(),
+            egui::pos2(rect.right(), rect.top() + TIME_AXIS_HEIGHT),
+        );
+        let lanes_rect = egui::Rect::from_min_max(
+            egui::pos2(rect.left(), rect.top() + TIME_AXIS_HEIGHT),
             rect.right_bottom(),
         );
 
-        // TODO(RR-4433): the implementation is incomplete and inconsistent with the time series view.
-        let current_time = query.latest_at.as_i64() as f64;
-        let cursor_x = time_to_x(current_time, rect, t_min, t_max);
+        // Build the time↔screen map. A single contiguous segment matches today's
+        // Status view behavior (no gap collapsing).
+        let data_segment = AbsoluteTimeRange::new(
+            TimeInt::saturated_temporal_i64(data_min as i64),
+            TimeInt::saturated_temporal_i64(data_max.ceil() as i64),
+        );
+        let time_ranges_ui = TimeRangesUi::new(
+            rect.x_range(),
+            time_view,
+            std::slice::from_ref(&data_segment),
+        );
+
+        let current_time = TimeReal::from(query.latest_at.as_i64() as f64);
+        let cursor_x = time_ranges_ui.x_from_time_f32(current_time);
 
         // On primary press, remember whether it landed on a phase. A phase press
         // selects the entity; a press on empty space drags the time cursor.
         if ui.input(|i| i.pointer.primary_pressed()) {
             state.press_on_phase = response
                 .interact_pointer_pos()
-                .is_some_and(|pos| hit_test_phase(pos, lanes_rect, &all_lanes, t_min, t_max));
+                .is_some_and(|pos| hit_test_phase(pos, lanes_rect, &all_lanes, &time_ranges_ui));
         }
 
         // While the primary button is active on the view and the press started on
@@ -218,16 +237,15 @@ impl ViewClass for StatusView {
                     || i.pointer.primary_released()
             });
         let dragging_cursor = primary_active && !state.press_on_phase;
-        if dragging_cursor && let Some(pos) = response.interact_pointer_pos() {
-            let frac = ((pos.x - rect.left()) / rect.width()) as f64;
-            let new_time = t_min + frac * (t_max - t_min);
-            ctx.send_time_commands([
-                TimeControlCommand::Pause,
-                TimeControlCommand::SetTime(TimeReal::from(new_time)),
-            ]);
+        if dragging_cursor
+            && let Some(pos) = response.interact_pointer_pos()
+            && let Some(time) = time_ranges_ui.time_from_x_f32(pos.x)
+        {
+            ctx.send_time_commands([TimeControlCommand::Pause, TimeControlCommand::SetTime(time)]);
         }
 
-        // Right- or middle-click + drag to pan.
+        // Pan: right- or middle-click drag, plus two-finger touchpad horizontal scroll.
+        // Cmd+scroll is routed to `zoom_delta` by egui, so it won't double-fire here.
         let mut pan_dx = 0.0;
         if response.dragged_by(egui::PointerButton::Secondary)
             || response.dragged_by(egui::PointerButton::Middle)
@@ -235,35 +253,52 @@ impl ViewClass for StatusView {
             pan_dx += response.drag_delta().x;
             ui.ctx().set_cursor_icon(egui::CursorIcon::AllScroll);
         }
-
-        // Two-finger touchpad pan (horizontal scroll without modifier).
-        // Cmd+scroll is routed to `zoom_delta` by egui, so it won't double-fire here.
         if response.hovered() {
             pan_dx += ui.input(|i| i.smooth_scroll_delta.x);
         }
-
-        if pan_dx != 0.0 {
-            let dt = -(pan_dx as f64 / rect.width() as f64) * (t_max - t_min);
-            t_min += dt;
-            t_max += dt;
+        if pan_dx != 0.0
+            && let Some(new_view) = time_ranges_ui.pan(-pan_dx)
+        {
+            time_view = new_view;
         }
 
         // Ctrl/Cmd + scroll to zoom.
-        handle_zoom(ui, &response, rect, &mut t_min, &mut t_max);
-        state.time_range = Some((t_min, t_max));
+        let zoom_delta = ui.input(|i| i.zoom_delta());
+        if zoom_delta != 1.0
+            && response.hovered()
+            && let Some(pointer_pos) = ui.input(|i| i.pointer.hover_pos())
+            && let Some(new_view) = time_ranges_ui.zoom_at(pointer_pos.x, zoom_delta)
+        {
+            time_view = new_view;
+        }
+        state.time_view = Some(time_view);
 
         // Background.
         let painter = ui.painter_at(rect);
         painter.rect_filled(rect, 0.0, ui.style().visuals.extreme_bg_color);
 
-        // Draw lanes.
-        let label_color = ui.style().visuals.text_color();
-        let weak_color = ui.style().visuals.weak_text_color();
+        // Draw the time ruler at the top.
         let time_type = ctx
             .time_ctrl
             .timeline()
             .map_or(TimeType::Sequence, |tl| tl.typ());
         let timestamp_format = ctx.app_options().timestamp_format;
+        re_time_ruler::paint_time_ranges_and_ticks(
+            &time_ranges_ui,
+            ui,
+            &painter.with_clip_rect(time_axis_rect),
+            time_axis_rect.y_range(),
+            time_type,
+            timestamp_format,
+        );
+        // Separator between ruler and lanes.
+        painter.line_segment(
+            [time_axis_rect.left_bottom(), time_axis_rect.right_bottom()],
+            egui::Stroke::new(1.0, ui.style().visuals.weak_text_color()),
+        );
+
+        // Draw lanes.
+        let label_color = ui.style().visuals.text_color();
         for (lane_idx, lane) in all_lanes.iter().enumerate() {
             paint_lane(
                 ui,
@@ -271,41 +306,28 @@ impl ViewClass for StatusView {
                 lanes_rect,
                 lane_idx,
                 lane,
-                t_min,
-                t_max,
+                &time_ranges_ui,
                 time_type,
                 timestamp_format,
                 label_color,
             );
         }
 
-        // Draw time axis.
-        paint_time_axis(
-            &painter,
-            time_axis_rect,
-            t_min,
-            t_max,
-            time_type,
-            timestamp_format,
-            label_color,
-            weak_color,
-        );
-
         // Handle selection: determine what's under the pointer (lane entity or view).
         let hover_pos = ui.input(|i| i.pointer.hover_pos());
         let hovered_lane = hover_pos.and_then(|pos| hovered_lane(pos, lanes_rect, &all_lanes));
 
-        paint_time_cursor(
-            ui,
-            &painter,
-            rect,
-            cursor_x,
-            current_time,
-            t_min,
-            t_max,
-            dragging_cursor,
-            hovered_lane.is_some(),
-        );
+        // Time cursor — uses the same triangle-headed style as the time panel.
+        if let Some(cursor_x) = cursor_x
+            && rect.x_range().contains(cursor_x)
+        {
+            let cursor_response = if dragging_cursor || hovered_lane.is_none() {
+                Some(&response)
+            } else {
+                None
+            };
+            ui.paint_time_cursor(&painter, cursor_response, cursor_x, rect.y_range());
+        }
 
         let interacted_item = if let Some(entity_path) = hovered_lane {
             Item::DataResult(DataResultInteractionAddress::from_entity_path(
@@ -341,38 +363,6 @@ fn data_time_range(lanes: &[&StatusLane]) -> (f64, f64) {
     }
 }
 
-/// Map a time value to screen x within the given rect.
-fn time_to_x(t: f64, rect: egui::Rect, t_min: f64, t_max: f64) -> f32 {
-    let frac = ((t - t_min) / (t_max - t_min)) as f32;
-    egui::lerp(rect.left()..=rect.right(), frac)
-}
-
-/// Handle Cmd/Ctrl + scroll to zoom centered on the pointer.
-fn handle_zoom(
-    ui: &egui::Ui,
-    response: &egui::Response,
-    rect: egui::Rect,
-    t_min: &mut f64,
-    t_max: &mut f64,
-) {
-    let range = *t_max - *t_min;
-
-    // egui routes Cmd+scroll to zoom_delta.
-    let zoom_delta = ui.input(|i| i.zoom_delta());
-    if zoom_delta != 1.0 && response.hovered() {
-        let zoom_factor = zoom_delta as f64;
-        let mouse_x = ui
-            .input(|i| i.pointer.hover_pos())
-            .map(|p| p.x)
-            .unwrap_or_else(|| rect.center().x);
-        let frac = ((mouse_x - rect.left()) / rect.width()) as f64;
-        let pivot = *t_min + frac * range;
-
-        *t_min = pivot - (pivot - *t_min) / zoom_factor;
-        *t_max = pivot + (*t_max - pivot) / zoom_factor;
-    }
-}
-
 /// Returns the entity path of the lane under `pos`, if any.
 fn hovered_lane<'a>(
     pos: egui::Pos2,
@@ -392,8 +382,7 @@ fn hit_test_phase(
     pos: egui::Pos2,
     lanes_rect: egui::Rect,
     lanes: &[&StatusLane],
-    t_min: f64,
-    t_max: f64,
+    time_ranges_ui: &TimeRangesUi,
 ) -> bool {
     for (lane_idx, lane) in lanes.iter().enumerate() {
         let y_top = lanes_rect.top() + TOP_MARGIN + lane_idx as f32 * LANE_TOTAL_HEIGHT;
@@ -406,10 +395,16 @@ fn hit_test_phase(
             if !phase.visible {
                 continue;
             }
-            let x_start =
-                time_to_x(phase.start_time as f64, lanes_rect, t_min, t_max).max(lanes_rect.left());
+            let Some(x_start) =
+                time_ranges_ui.x_from_time_f32(TimeReal::from(phase.start_time as f64))
+            else {
+                continue;
+            };
+            let x_start = x_start.max(lanes_rect.left());
             let x_end = if let Some(next) = lane.phases.get(i + 1) {
-                time_to_x(next.start_time as f64, lanes_rect, t_min, t_max)
+                time_ranges_ui
+                    .x_from_time_f32(TimeReal::from(next.start_time as f64))
+                    .unwrap_or_else(|| lanes_rect.right())
             } else {
                 lanes_rect.right()
             }
@@ -433,8 +428,7 @@ fn paint_lane(
     lanes_rect: egui::Rect,
     lane_idx: usize,
     lane: &StatusLane,
-    t_min: f64,
-    t_max: f64,
+    time_ranges_ui: &TimeRangesUi,
     time_type: TimeType,
     timestamp_format: TimestampFormat,
     label_color: egui::Color32,
@@ -463,10 +457,15 @@ fn paint_lane(
         if !phase.visible {
             continue;
         }
-        let x_start = time_to_x(phase.start_time as f64, lanes_rect, t_min, t_max);
+        let Some(x_start) = time_ranges_ui.x_from_time_f32(TimeReal::from(phase.start_time as f64))
+        else {
+            continue;
+        };
         let next_phase = lane.phases.get(i + 1);
         let x_end = if let Some(next) = next_phase {
-            time_to_x(next.start_time as f64, lanes_rect, t_min, t_max)
+            time_ranges_ui
+                .x_from_time_f32(TimeReal::from(next.start_time as f64))
+                .unwrap_or_else(|| lanes_rect.right())
         } else {
             lanes_rect.right()
         };
@@ -554,107 +553,6 @@ fn readable_text_color(bg: egui::Color32) -> egui::Color32 {
         egui::Color32::BLACK
     } else {
         egui::Color32::WHITE
-    }
-}
-
-/// Paint the time cursor as a full-height vertical line, thickened when hovered or dragged.
-#[expect(clippy::too_many_arguments)]
-#[expect(clippy::fn_params_excessive_bools)]
-fn paint_time_cursor(
-    ui: &egui::Ui,
-    painter: &egui::Painter,
-    rect: egui::Rect,
-    cursor_x: f32,
-    current_time: f64,
-    t_min: f64,
-    t_max: f64,
-    dragging_cursor: bool,
-    pointer_on_lane: bool,
-) {
-    const CURSOR_GRAB_RADIUS: f32 = 6.0;
-
-    if current_time < t_min || current_time > t_max {
-        return;
-    }
-
-    let cursor_hovered = ui
-        .input(|i| i.pointer.hover_pos())
-        .is_some_and(|pos| (pos.x - cursor_x).abs() <= CURSOR_GRAB_RADIUS);
-    let active = cursor_hovered || dragging_cursor;
-    // Don't override the cursor when the pointer is over a lane band — clicking
-    // there selects the entity rather than scrubbing the time cursor.
-    if active && !pointer_on_lane {
-        ui.ctx().set_cursor_icon(egui::CursorIcon::ResizeHorizontal);
-    }
-    let stroke = ui.visuals().widgets.inactive.fg_stroke;
-    let width_multiplier = if active { 3.0 } else { 1.5 };
-    painter.vline(
-        cursor_x,
-        rect.top()..=rect.bottom(),
-        egui::Stroke::new(width_multiplier * stroke.width, stroke.color),
-    );
-}
-
-/// Paint the time axis with tick marks and labels.
-#[expect(clippy::too_many_arguments)]
-fn paint_time_axis(
-    painter: &egui::Painter,
-    rect: egui::Rect,
-    t_min: f64,
-    t_max: f64,
-    time_type: TimeType,
-    timestamp_format: TimestampFormat,
-    text_color: egui::Color32,
-    weak_color: egui::Color32,
-) {
-    let range = t_max - t_min;
-    if range <= 0.0 {
-        return;
-    }
-
-    // Separator line.
-    painter.line_segment(
-        [rect.left_top(), rect.right_top()],
-        egui::Stroke::new(1.0, weak_color),
-    );
-
-    // Compute a nice tick spacing.
-    let approx_num_ticks = (rect.width() / 80.0).max(2.0) as usize;
-    let raw_step = range / approx_num_ticks as f64;
-    let magnitude = 10.0_f64.powf(raw_step.log10().floor());
-    let residual = raw_step / magnitude;
-    let step = if residual <= 1.5 {
-        magnitude
-    } else if residual <= 3.5 {
-        2.0 * magnitude
-    } else if residual <= 7.5 {
-        5.0 * magnitude
-    } else {
-        10.0 * magnitude
-    };
-
-    let first_tick = (t_min / step).ceil() * step;
-    let mut t = first_tick;
-    while t <= t_max {
-        let x = time_to_x(t, rect, t_min, t_max);
-
-        // Tick mark.
-        painter.line_segment(
-            [egui::pos2(x, rect.top()), egui::pos2(x, rect.top() + 4.0)],
-            egui::Stroke::new(1.0, weak_color),
-        );
-
-        // Label.
-        let label = TimeCell::new(time_type, t as i64).format_compact(timestamp_format);
-        painter.text(
-            egui::pos2(x, rect.top() + 5.0),
-            egui::Align2::CENTER_TOP,
-            label,
-            egui::FontId::proportional(10.0),
-            text_color,
-        );
-
-        t += step;
     }
 }
 

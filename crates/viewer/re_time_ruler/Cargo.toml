@@ -1,10 +1,10 @@
 [package]
 authors.workspace = true
-description = "A view that shows status transitions as horizontal lanes over time."
+description = "Time ruler widget shared by the time panel and time-aware views."
 edition.workspace = true
 homepage.workspace = true
 license.workspace = true
-name = "re_view_status"
+name = "re_time_ruler"
 publish = true
 readme = "README.md"
 repository.workspace = true
@@ -19,21 +19,15 @@ workspace = true
 all-features = true
 
 [dependencies]
-re_byte_size.workspace = true
-re_chunk_store.workspace = true
-re_component_ui.workspace = true
+re_format.workspace = true
+re_log.workspace = true
 re_log_types.workspace = true
 re_sdk_types.workspace = true
-re_selection_panel.workspace = true
-re_time_ruler.workspace = true
 re_tracing.workspace = true
-re_ui.workspace = true
-re_view.workspace = true
 re_viewer_context.workspace = true
 
 egui.workspace = true
+itertools.workspace = true
 
-[dev-dependencies]
-re_test_context.workspace = true
-re_test_viewport.workspace = true
-re_viewport_blueprint.workspace = true
+[lib]
+bench = false

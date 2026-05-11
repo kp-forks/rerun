@@ -7,7 +7,7 @@ use re_ui::{HasDesignTokens as _, UICommand, UICommandSender as _, UiExt as _, l
 use re_viewer_context::open_url::ViewerOpenUrl;
 use re_viewer_context::{SystemCommandSender as _, TimeControl, TimeControlCommand, ViewerContext};
 
-use super::time_ranges_ui::TimeRangesUi;
+use re_time_ruler::TimeRangesUi;
 
 /// Paints a rect on the timeline given a time range.
 pub fn paint_timeline_range(

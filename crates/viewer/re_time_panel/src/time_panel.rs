@@ -32,8 +32,9 @@ use crate::recursive_chunks_per_timeline_subscriber::PathRecursiveChunksPerTimel
 use crate::streams_tree_data::{EntityData, StreamsTreeData, components_for_entity};
 use crate::time_axis::TimelineAxis;
 use crate::time_control_ui::TimeControlUi;
-use crate::time_ranges_ui::{self, TimeRangesUi};
-use crate::{MOVE_TIME_CURSOR_ICON, data_density_graph, paint_ticks, time_selection_ui};
+use re_time_ruler::{self, TimeRangesUi};
+
+use crate::{MOVE_TIME_CURSOR_ICON, data_density_graph, time_selection_ui};
 
 #[derive(Debug, Clone, Hash)]
 pub struct TimePanelItem {
@@ -620,7 +621,7 @@ impl TimePanel {
         );
 
         if let Some(time_type) = store_ctx.time_ctrl.time_type() {
-            paint_ticks::paint_time_ranges_and_ticks(
+            re_time_ruler::paint_time_ranges_and_ticks(
                 &self.time_ranges_ui,
                 ui,
                 &time_area_painter,
@@ -1749,7 +1750,7 @@ fn initialize_time_ranges_ui(
 
 /// Find a nice view of everything in the valid marked range.
 fn view_everything(x_range: &Rangef, timeline_axis: &TimelineAxis) -> TimeView {
-    let gap_width = time_ranges_ui::gap_width(x_range, &timeline_axis.ranges) as f32;
+    let gap_width = re_time_ruler::gap_width(x_range, &timeline_axis.ranges) as f32;
     let num_gaps = timeline_axis.ranges.len().saturating_sub(1);
     let width = x_range.span();
     let width_sans_gaps = width - num_gaps as f32 * gap_width;
