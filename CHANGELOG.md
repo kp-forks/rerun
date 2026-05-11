@@ -123,7 +123,15 @@ TODO(ilya): please fill out
 
 #### Experimental training dataloader
 
-TODO(gijs): please fill out
+You can now train PyTorch models directly against the Rerun OSS server, with no intermediate export step!
+
+The new highly experimental `rerun.experimental.dataloader` module exposes Rerun recordings as iterable or map-style PyTorch datasets, streaming encoded images, scalars, and compressed video (`h264`/`h265`/`av1`) on the fly. Random access, multi-worker prefetching, and DDP support work out of the box.
+
+Each field accepts an optional `window=(start_offset, end_offset)` parameter, an inclusive range relative to the current index. When set, the field yields the slice of values across that window instead of a single sample. For example, `window=(1, CHUNK_SIZE)` returns the next `CHUNK_SIZE` action values after every observation, making action-chunking policies a single query per batch.
+
+See the new [LeRobot ACT training example](https://github.com/rerun-io/rerun/tree/main/examples/python/dataloader).
+
+Expect breaking changes between releases while we iterate on the design. For large-scale training, the Rerun Data Platform offers a higher-performance backend.
 
 ### ⚠️ Breaking changes
 
