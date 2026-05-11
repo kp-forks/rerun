@@ -442,10 +442,8 @@ impl RawRrdManifest {
             use re_byte_size::SizeBytes as _;
             let byte_size_uncompressed = chunk.heap_size_bytes();
 
-            let uncompressed_byte_span = re_span::Span {
-                start: offset,
-                len: byte_size_uncompressed,
-            };
+            let uncompressed_byte_span =
+                re_span::Span::from_start_len(offset, byte_size_uncompressed);
 
             offset += byte_size_uncompressed;
 

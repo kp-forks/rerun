@@ -8588,6 +8588,7 @@ dependencies = [
  "re_query",
  "re_sdk_types",
  "re_sorbet",
+ "re_span",
  "re_tracing",
  "re_types_core",
  "similar-asserts",

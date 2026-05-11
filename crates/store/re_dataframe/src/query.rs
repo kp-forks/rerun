@@ -29,6 +29,7 @@ use re_query::{QueryCache, StorageEngineLike};
 use re_sorbet::{
     ChunkColumnDescriptors, ColumnSelector, RowIdColumnDescriptor, TimeColumnSelector,
 };
+use re_span::Span;
 use re_types_core::arrow_helpers::as_array_ref;
 use re_types_core::{Loggable as _, SerializedComponentColumn, archetypes};
 
@@ -75,18 +76,109 @@ pub struct NextNRowsOutput {
     pub num_rows: usize,
 }
 
-/// Per-output-column extend record for the deferred-replay finaliser in `_next_n_rows`.
+/// One step in the deferred-replay finalizer inside `_next_n_rows`.
+///
+/// Each output column accumulates a list of [`ColumnExtend`] entries during the
+/// row-resolution loop and replays them via `MutableArrayData` once the batch is
+/// fully sized, allowing single-row pushes to coalesce into long abutting runs.
 #[derive(Debug, Clone, Copy)]
 enum ColumnExtend {
-    /// Append `len` rows from `src_idx` starting at `start`.
+    /// Append a contiguous row run by copying `rows` from one of the column's
+    /// distinct source arrays (`SelectedEmitter::Source::sources[source_idx]`).
     Range {
-        src_idx: usize,
-        start: usize,
-        len: usize,
+        /// Index into `SelectedEmitter::Source::sources` — picks which previously
+        /// registered source array this run reads from. Source arrays are
+        /// deduplicated by their underlying chunk pointer at registration time
+        /// (see `SelectedEmitter::ensure_source`), so multiple runs from the
+        /// same chunk share a single `source_idx`.
+        source_idx: usize,
+
+        /// Row range to copy out of `sources[source_idx]` (start row, inclusive,
+        /// for `len` rows).
+        rows: Span<usize>,
     },
 
     /// Append `len` null rows.
     Nulls { len: usize },
+}
+
+/// Per-output-column emission state used by [`QueryHandle::_next_n_rows`].
+///
+/// `Source` columns accumulate [`ColumnExtend`] entries that reference shared
+/// source arrays (deduplicated by chunk pointer), then replay them through
+/// `MutableArrayData` once the batch is fully sized. `Time` columns push i64
+/// values + a validity mask directly.
+///
+/// `source_bpr[i]` is the estimated bytes-per-row for `sources[i]`, computed
+/// as `get_array_memory_size() / len()` at registration time. Cheap (one
+/// division per distinct source per batch) and lets the walk amortize the byte
+/// budget without inspecting `MutableArrayData` until freeze.
+enum SelectedEmitter {
+    Source {
+        sources: Vec<ArrayData>,
+        source_ids: Vec<usize>,
+        source_bpr: Vec<usize>,
+        extends: Vec<ColumnExtend>,
+    },
+    Time {
+        values: Vec<i64>,
+        valid: Vec<bool>,
+    },
+}
+
+impl SelectedEmitter {
+    fn ensure_source(
+        sources: &mut Vec<ArrayData>,
+        source_ids: &mut Vec<usize>,
+        source_bpr: &mut Vec<usize>,
+        id: usize,
+        data: impl FnOnce() -> ArrayData,
+    ) -> usize {
+        if let Some(idx) = source_ids.iter().position(|x| *x == id) {
+            idx
+        } else {
+            let idx = sources.len();
+            let d = data();
+            let bpr = d.get_array_memory_size().checked_div(d.len()).unwrap_or(0);
+            sources.push(d);
+            source_ids.push(id);
+            source_bpr.push(bpr);
+            idx
+        }
+    }
+
+    /// Append a contiguous row run drawn from `sources[source_idx]`,
+    /// merging with a trailing abutting `Range` from the same source.
+    /// Coalescing turns long runs of single-row extends into a handful
+    /// of multi-row extends, shrinking the replay loop in the finalizer.
+    fn push_run(extends: &mut Vec<ColumnExtend>, source_idx: usize, rows: Span<usize>) {
+        if rows.len == 0 {
+            return;
+        }
+        if let Some(ColumnExtend::Range {
+            source_idx: prev_src,
+            rows: prev_rows,
+        }) = extends.last_mut()
+            && *prev_src == source_idx
+            && prev_rows.end() == rows.start
+        {
+            prev_rows.len += rows.len;
+            return;
+        }
+        extends.push(ColumnExtend::Range { source_idx, rows });
+    }
+
+    /// Append `len` null rows, merging with a trailing `Nulls` entry.
+    fn push_nulls(extends: &mut Vec<ColumnExtend>, len: usize) {
+        if len == 0 {
+            return;
+        }
+        if let Some(ColumnExtend::Nulls { len: prev_len }) = extends.last_mut() {
+            *prev_len += len;
+            return;
+        }
+        extends.push(ColumnExtend::Nulls { len });
+    }
 }
 
 // TODO(cmc): (no specific order) (should we make issues for these?)
@@ -1498,79 +1590,6 @@ impl<E: StorageEngineLike> QueryHandle<E> {
             };
         }
 
-        // Per-output-column emission state.
-        //
-        // `source_bpr[i]` is the estimated bytes-per-row for `sources[i]`, computed as
-        // `get_array_memory_size() / len()` at registration time. Cheap (one division per
-        // distinct source per batch) and lets the walk amortize the byte budget without
-        // inspecting `MutableArrayData` until freeze.
-        enum SelectedEmitter {
-            Source {
-                sources: Vec<ArrayData>,
-                source_ids: Vec<usize>,
-                source_bpr: Vec<usize>,
-                extends: Vec<ColumnExtend>,
-            },
-            Time {
-                values: Vec<i64>,
-                valid: Vec<bool>,
-            },
-        }
-
-        impl SelectedEmitter {
-            fn ensure_source(
-                sources: &mut Vec<ArrayData>,
-                source_ids: &mut Vec<usize>,
-                source_bpr: &mut Vec<usize>,
-                id: usize,
-                data: impl FnOnce() -> ArrayData,
-            ) -> usize {
-                if let Some(idx) = source_ids.iter().position(|x| *x == id) {
-                    idx
-                } else {
-                    let idx = sources.len();
-                    let d = data();
-                    let bpr = d.get_array_memory_size().checked_div(d.len()).unwrap_or(0);
-                    sources.push(d);
-                    source_ids.push(id);
-                    source_bpr.push(bpr);
-                    idx
-                }
-            }
-
-            /// Append a `Range` extend, merging with the previous entry when it is
-            /// a `Range` from the same source whose end abuts `start`. Coalescing
-            /// turns long runs of single-row extends into a handful of multi-row
-            /// extends, shrinking the replay loop in the finaliser.
-            fn push_range(extends: &mut Vec<ColumnExtend>, src_idx: usize, start: usize) {
-                if let Some(ColumnExtend::Range {
-                    src_idx: prev_src,
-                    start: prev_start,
-                    len: prev_len,
-                }) = extends.last_mut()
-                    && *prev_src == src_idx
-                    && *prev_start + *prev_len == start
-                {
-                    *prev_len += 1;
-                    return;
-                }
-                extends.push(ColumnExtend::Range {
-                    src_idx,
-                    start,
-                    len: 1,
-                });
-            }
-
-            /// Append a single null row, merging with a trailing `Nulls` entry.
-            fn push_null(extends: &mut Vec<ColumnExtend>) {
-                if let Some(ColumnExtend::Nulls { len }) = extends.last_mut() {
-                    *len += 1;
-                    return;
-                }
-                extends.push(ColumnExtend::Nulls { len: 1 });
-            }
-        }
-
         // Clamp the up-front capacity hint: callers can legitimately pass a very
         // large `max_rows` (e.g. `usize::MAX` when only `max_bytes` is meant to
         // cap the batch) and `Vec::with_capacity(usize::MAX)` aborts with
@@ -1642,17 +1661,21 @@ impl<E: StorageEngineLike> QueryHandle<E> {
                             // always makes sense.
                             let id = std::ptr::from_ref::<Chunk>(&cc.chunk) as usize;
                             let pos = cs.cursor as usize;
-                            let src_idx = SelectedEmitter::ensure_source(
+                            let source_idx = SelectedEmitter::ensure_source(
                                 sources,
                                 source_ids,
                                 source_bpr,
                                 id,
                                 || cc.chunk.row_ids_array().to_data(),
                             );
-                            SelectedEmitter::push_range(extends, src_idx, pos);
-                            total_bytes = total_bytes.saturating_add(source_bpr[src_idx]);
+                            SelectedEmitter::push_run(
+                                extends,
+                                source_idx,
+                                Span::from_start_len(pos, 1),
+                            );
+                            total_bytes = total_bytes.saturating_add(source_bpr[source_idx]);
                         } else {
-                            SelectedEmitter::push_null(extends);
+                            SelectedEmitter::push_nulls(extends, 1);
                         }
                     }
 
@@ -1696,21 +1719,22 @@ impl<E: StorageEngineLike> QueryHandle<E> {
                                     .map(|la| la.to_data());
                                 if let Some(data) = list_array_data {
                                     let id = std::ptr::from_ref::<Chunk>(s.chunk) as usize;
-                                    let src_idx = SelectedEmitter::ensure_source(
+                                    let source_idx = SelectedEmitter::ensure_source(
                                         sources,
                                         source_ids,
                                         source_bpr,
                                         id,
                                         || data,
                                     );
-                                    SelectedEmitter::push_range(
+                                    SelectedEmitter::push_run(
                                         extends,
-                                        src_idx,
-                                        s.cursor as usize,
+                                        source_idx,
+                                        Span::from_start_len(s.cursor as usize, 1),
                                     );
-                                    total_bytes = total_bytes.saturating_add(source_bpr[src_idx]);
+                                    total_bytes =
+                                        total_bytes.saturating_add(source_bpr[source_idx]);
                                 } else {
-                                    SelectedEmitter::push_null(extends);
+                                    SelectedEmitter::push_nulls(extends, 1);
                                 }
                             }
                             Some(StreamingJoinState::Retrofilled(unit)) => {
@@ -1737,20 +1761,25 @@ impl<E: StorageEngineLike> QueryHandle<E> {
                                     // UnitChunkShared derefs to Chunk; underlying address is
                                     // Arc-stable.
                                     let id = std::ptr::from_ref::<Chunk>(&**unit) as usize;
-                                    let src_idx = SelectedEmitter::ensure_source(
+                                    let source_idx = SelectedEmitter::ensure_source(
                                         sources,
                                         source_ids,
                                         source_bpr,
                                         id,
                                         || data,
                                     );
-                                    SelectedEmitter::push_range(extends, src_idx, 0);
-                                    total_bytes = total_bytes.saturating_add(source_bpr[src_idx]);
+                                    SelectedEmitter::push_run(
+                                        extends,
+                                        source_idx,
+                                        Span::from_start_len(0, 1),
+                                    );
+                                    total_bytes =
+                                        total_bytes.saturating_add(source_bpr[source_idx]);
                                 } else {
-                                    SelectedEmitter::push_null(extends);
+                                    SelectedEmitter::push_nulls(extends, 1);
                                 }
                             }
-                            None => SelectedEmitter::push_null(extends),
+                            None => SelectedEmitter::push_nulls(extends, 1),
                         }
                     }
                 }
@@ -1786,11 +1815,9 @@ impl<E: StorageEngineLike> QueryHandle<E> {
                     let mut mutable = MutableArrayData::new(src_refs, true, num_rows);
                     for ext in &extends {
                         match ext {
-                            ColumnExtend::Range {
-                                src_idx,
-                                start,
-                                len,
-                            } => mutable.extend(*src_idx, *start, *start + *len),
+                            ColumnExtend::Range { source_idx, rows } => {
+                                mutable.extend(*source_idx, rows.start, rows.end());
+                            }
                             ColumnExtend::Nulls { len } => mutable.extend_nulls(*len),
                         }
                     }
