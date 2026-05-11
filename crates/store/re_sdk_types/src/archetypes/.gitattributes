@@ -13,6 +13,7 @@ capsules3d.rs linguist-generated=true
 coordinate_frame.rs linguist-generated=true
 cylinders3d.rs linguist-generated=true
 depth_image.rs linguist-generated=true
+ellipses2d.rs linguist-generated=true
 ellipsoids3d.rs linguist-generated=true
 encoded_depth_image.rs linguist-generated=true
 encoded_image.rs linguist-generated=true

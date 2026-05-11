@@ -9,6 +9,7 @@ mod cameras;
 mod capsules3d;
 mod cylinders3d;
 mod depth_images;
+mod ellipses2d;
 mod ellipsoids;
 mod grid_map;
 mod images;
@@ -77,6 +78,7 @@ pub fn register_2d_spatial_visualizers(
     system_registry.register_visualizer::<boxes3d::Boxes3DVisualizer>()?;
     system_registry.register_visualizer::<depth_images::DepthImageVisualizer>()?;
     system_registry.register_visualizer::<ellipsoids::Ellipsoids3DVisualizer>()?;
+    system_registry.register_visualizer::<ellipses2d::Ellipses2DVisualizer>()?;
     system_registry.register_visualizer::<video::EncodedDepthImageVisualizer>()?;
     system_registry.register_visualizer::<video::EncodedImageVisualizer>()?;
     system_registry.register_visualizer::<grid_map::GridMapVisualizer>()?;
@@ -106,6 +108,7 @@ pub fn register_3d_spatial_visualizers(
     system_registry.register_visualizer::<cylinders3d::Cylinders3DVisualizer>()?;
     system_registry.register_visualizer::<depth_images::DepthImageVisualizer>()?;
     system_registry.register_visualizer::<ellipsoids::Ellipsoids3DVisualizer>()?;
+    system_registry.register_visualizer::<ellipses2d::Ellipses2DVisualizer>()?;
     system_registry.register_visualizer::<video::EncodedDepthImageVisualizer>()?;
     system_registry.register_visualizer::<video::EncodedImageVisualizer>()?;
     system_registry.register_visualizer::<grid_map::GridMapVisualizer>()?;
@@ -138,6 +141,10 @@ pub fn visualizers_processing_draw_order()
         (
             depth_images::DepthImageVisualizer::identifier(),
             archetypes::DepthImage::descriptor_draw_order(),
+        ),
+        (
+            ellipses2d::Ellipses2DVisualizer::identifier(),
+            archetypes::Ellipses2D::descriptor_draw_order(),
         ),
         (
             video::EncodedDepthImageVisualizer::identifier(),

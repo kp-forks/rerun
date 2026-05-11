@@ -178,7 +178,7 @@ pub fn archetype_field_fallbacks(registry: &mut FallbackProviderRegistry) {
     // Boxes2D
     registry.register_component_fallback_provider(
         archetypes::Boxes2D::descriptor_draw_order().component,
-        |_| components::DrawOrder::DEFAULT_BOX2D,
+        |_| components::DrawOrder::DEFAULT_SHAPE_2D,
     );
     registry.register_component_fallback_provider(
         archetypes::Boxes2D::descriptor_show_labels().component,
@@ -229,6 +229,22 @@ pub fn archetype_field_fallbacks(registry: &mut FallbackProviderRegistry) {
                 ctx,
                 archetypes::Cylinders3D::descriptor_radii().component,
                 archetypes::Cylinders3D::descriptor_labels().component,
+            )
+        },
+    );
+
+    // Ellipses2D
+    registry.register_component_fallback_provider(
+        archetypes::Ellipses2D::descriptor_draw_order().component,
+        |_| components::DrawOrder::DEFAULT_SHAPE_2D,
+    );
+    registry.register_component_fallback_provider(
+        archetypes::Ellipses2D::descriptor_show_labels().component,
+        |ctx| {
+            show_labels_fallback(
+                ctx,
+                archetypes::Ellipses2D::descriptor_half_sizes().component,
+                archetypes::Ellipses2D::descriptor_labels().component,
             )
         },
     );

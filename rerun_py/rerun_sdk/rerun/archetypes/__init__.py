@@ -15,6 +15,7 @@ from .clear import Clear
 from .coordinate_frame import CoordinateFrame
 from .cylinders3d import Cylinders3D
 from .depth_image import DepthImage
+from .ellipses2d import Ellipses2D
 from .ellipsoids3d import Ellipsoids3D
 from .encoded_depth_image import EncodedDepthImage
 from .encoded_image import EncodedImage
@@ -65,6 +66,7 @@ __all__ = [
     "CoordinateFrame",
     "Cylinders3D",
     "DepthImage",
+    "Ellipses2D",
     "Ellipsoids3D",
     "EncodedDepthImage",
     "EncodedImage",

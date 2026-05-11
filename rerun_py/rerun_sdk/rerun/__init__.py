@@ -112,6 +112,7 @@ from .archetypes import (
     CoordinateFrame as CoordinateFrame,
     Cylinders3D as Cylinders3D,
     DepthImage as DepthImage,
+    Ellipses2D as Ellipses2D,
     Ellipsoids3D as Ellipsoids3D,
     EncodedDepthImage as EncodedDepthImage,
     EncodedImage as EncodedImage,

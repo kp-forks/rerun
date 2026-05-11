@@ -49,6 +49,7 @@ This page lists all built-in archetypes.
 
 * [`Arrows2D`](archetypes/arrows2d.md): 2D arrows with optional colors, radii, labels, etc.
 * [`Boxes2D`](archetypes/boxes2d.md): 2D boxes with half-extents and optional center, colors etc.
+* [`Ellipses2D`](archetypes/ellipses2d.md): 2D ellipses with half-extents (semi-axes) and optional center, colors etc.
 * [`LineStrips2D`](archetypes/line_strips2d.md): 2D line strips with positions and optional colors, radii, labels, etc.
 * [`Points2D`](archetypes/points2d.md): A 2D point cloud with positions and optional colors, radii, labels, etc.
 

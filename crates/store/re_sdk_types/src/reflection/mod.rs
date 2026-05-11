@@ -2188,6 +2188,73 @@ fn generate_archetype_reflection() -> ArchetypeReflectionMap {
             },
         ),
         (
+            ArchetypeName::new("rerun.archetypes.Ellipses2D"),
+            ArchetypeReflection {
+                display_name: "Ellipses 2D",
+                deprecation_summary: None,
+                scope: None,
+                view_types: &["Spatial2DView", "Spatial3DView"],
+                fields: vec![
+                    ArchetypeFieldReflection {
+                        name: "half_sizes",
+                        display_name: "Half sizes",
+                        component_type: "rerun.components.HalfSize2D".into(),
+                        docstring_md: "All half-extents (semi-axes) that make up the batch of ellipses.",
+                        flags: ArchetypeFieldFlags::REQUIRED | ArchetypeFieldFlags::UI_EDITABLE,
+                    },
+                    ArchetypeFieldReflection {
+                        name: "centers",
+                        display_name: "Centers",
+                        component_type: "rerun.components.Position2D".into(),
+                        docstring_md: "Optional center positions of the ellipses.",
+                        flags: ArchetypeFieldFlags::UI_EDITABLE,
+                    },
+                    ArchetypeFieldReflection {
+                        name: "colors",
+                        display_name: "Colors",
+                        component_type: "rerun.components.Color".into(),
+                        docstring_md: "Optional colors for the ellipses.",
+                        flags: ArchetypeFieldFlags::UI_EDITABLE,
+                    },
+                    ArchetypeFieldReflection {
+                        name: "line_radii",
+                        display_name: "Line radii",
+                        component_type: "rerun.components.Radius".into(),
+                        docstring_md: "Optional radii for the lines that make up the ellipses.",
+                        flags: ArchetypeFieldFlags::UI_EDITABLE,
+                    },
+                    ArchetypeFieldReflection {
+                        name: "labels",
+                        display_name: "Labels",
+                        component_type: "rerun.components.Text".into(),
+                        docstring_md: "Optional text labels for the ellipses.\n\nIf there's a single label present, it will be placed at the center of the entity.\nOtherwise, each instance will have its own label.",
+                        flags: ArchetypeFieldFlags::UI_EDITABLE,
+                    },
+                    ArchetypeFieldReflection {
+                        name: "show_labels",
+                        display_name: "Show labels",
+                        component_type: "rerun.components.ShowLabels".into(),
+                        docstring_md: "Whether the text labels should be shown.\n\nIf not set, labels will automatically appear when there is exactly one label for this entity\nor the number of instances on this entity is under a certain threshold.",
+                        flags: ArchetypeFieldFlags::UI_EDITABLE,
+                    },
+                    ArchetypeFieldReflection {
+                        name: "draw_order",
+                        display_name: "Draw order",
+                        component_type: "rerun.components.DrawOrder".into(),
+                        docstring_md: "An optional floating point value that specifies the 2D drawing order.\n\nObjects with higher values are drawn on top of those with lower values.\nDefaults to `10.0`.",
+                        flags: ArchetypeFieldFlags::UI_EDITABLE,
+                    },
+                    ArchetypeFieldReflection {
+                        name: "class_ids",
+                        display_name: "Class ids",
+                        component_type: "rerun.components.ClassId".into(),
+                        docstring_md: "Optional [`components.ClassId`](https://rerun.io/docs/reference/types/components/class_id)s for the ellipses.\n\nThe [`components.ClassId`](https://rerun.io/docs/reference/types/components/class_id) provides colors and labels if not specified explicitly.",
+                        flags: ArchetypeFieldFlags::UI_EDITABLE,
+                    },
+                ],
+            },
+        ),
+        (
             ArchetypeName::new("rerun.archetypes.Ellipsoids3D"),
             ArchetypeReflection {
                 display_name: "Ellipsoids 3D",
