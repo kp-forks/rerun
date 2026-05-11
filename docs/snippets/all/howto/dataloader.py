@@ -5,9 +5,15 @@ from __future__ import annotations
 from pathlib import Path
 
 import torch
+import torch.multiprocessing
 from torch import nn
 
 import rerun as rr
+
+# Rerun's tokio runtime is not fork-safe, so DataLoader workers must use `spawn`.
+# Set this before constructing any DataLoader, even with `num_workers=0`, so that
+# bumping the worker count later doesn't deadlock on the first catalog call.
+torch.multiprocessing.set_start_method("spawn", force=True)
 
 # In a real workflow you'd start a long-running OSS server (`rerun server`) and point a
 # `CatalogClient` at it. For this self-contained snippet we use a short-lived in-process server and the DROID
