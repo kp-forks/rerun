@@ -11,7 +11,7 @@ table GridMap (
   "attr.docs.category": "Spatial 3D",
   "attr.docs.unreleased",
   "attr.docs.view_types": "Spatial3DView, Spatial2DView",
-  "attr.rerun.state": "unstable",
+  "attr.rerun.state": "stable",
   "attr.rust.derive": "PartialEq"
 ) {
   // --- Required ---

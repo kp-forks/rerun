@@ -29,8 +29,6 @@ class GridMap(Archetype):
 
     This archetype is intended for robotics applications like occupancy maps or navigation costmaps.
 
-    ⚠️ **This type is _unstable_ and may change significantly in a way that the data won't be backwards compatible.**
-
     Example
     -------
     ### Simple occupancy grid map:
