@@ -308,6 +308,54 @@ fn test_status_configuration() {
     ));
 }
 
+/// When phases are too narrow to render individually, consecutive narrow phases
+/// should be merged into a flat gray region. Wide phases on a separate lane
+/// remain rendered with their own colors.
+#[test]
+fn test_status_merge_small_phases() {
+    let mut snapshot_results = SnapshotResults::new();
+    let mut test_context = TestContext::new_with_view_class::<StatusView>();
+
+    let timeline = Timeline::log_tick();
+
+    // Lane 1: many tightly-packed phases that should collapse into a merged region.
+    let dense_values = ["A", "B", "C"];
+    for tick in 0..200i64 {
+        let timepoint = TimePoint::from([(timeline, tick)]);
+        let status = dense_values[(tick as usize) % dense_values.len()];
+        test_context.log_entity("state/dense", |builder| {
+            builder.with_archetype(
+                RowId::new(),
+                timepoint,
+                &re_sdk_types::archetypes::Status::new().with_status(status),
+            )
+        });
+    }
+
+    // Lane 2: a few wide phases that should render normally.
+    let sparse_data: Vec<(i64, &str)> = vec![(0, "Idle"), (60, "Active"), (130, "Idle")];
+    for (tick, status) in &sparse_data {
+        let timepoint = TimePoint::from([(timeline, *tick)]);
+        test_context.log_entity("state/sparse", |builder| {
+            builder.with_archetype(
+                RowId::new(),
+                timepoint,
+                &re_sdk_types::archetypes::Status::new().with_status(*status),
+            )
+        });
+    }
+
+    test_context.set_active_timeline(*timeline.name());
+
+    let view_id = setup_blueprint(&mut test_context);
+    snapshot_results.add(test_context.run_view_ui_and_save_snapshot(
+        view_id,
+        "status_merge_small_phases",
+        egui::vec2(400.0, 150.0),
+        None,
+    ));
+}
+
 /// Cmd+scroll over the Status view should zoom in around the pointer.
 #[test]
 fn test_status_zoom() {

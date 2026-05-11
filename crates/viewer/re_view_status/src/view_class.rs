@@ -10,7 +10,7 @@ use re_viewer_context::{
     ViewSpawnHeuristics, ViewState, ViewStateExt as _, ViewSystemExecutionError, ViewerContext,
 };
 
-use crate::data::{StatusLane, StatusLanesData};
+use crate::data::{StatusLane, StatusLanePhase, StatusLanesData};
 
 // Layout constants (in screen pixels).
 const LANE_BAND_HEIGHT: f32 = 22.0;
@@ -20,6 +20,45 @@ const LANE_TOTAL_HEIGHT: f32 = LANE_BAND_HEIGHT + LANE_LABEL_HEIGHT + LANE_GAP;
 
 const TIME_AXIS_HEIGHT: f32 = 20.0;
 const TOP_MARGIN: f32 = 4.0;
+
+/// Phases narrower than this on screen get folded into a merged region with their
+/// narrow neighbors. Wide phases always render with their own color.
+const MERGE_PHASE_THRESHOLD_PIXEL: f32 = 4.0;
+
+/// One drawable item along a lane: either a single phase or a merged region.
+#[derive(Debug)]
+enum RenderItem<'a> {
+    /// A phase wide enough to render with its own color and label.
+    Single {
+        phase: &'a StatusLanePhase,
+        x_start: f32,
+        x_end: f32,
+
+        /// End time of the phase (start of the next phase), if any.
+        end_time: Option<i64>,
+    },
+
+    /// Two or more consecutive narrow visible phases collapsed into one region.
+    Merged {
+        x_start: f32,
+        x_end: f32,
+        start_time: i64,
+
+        /// End time of the last phase in the group, if known.
+        end_time: Option<i64>,
+        count: usize,
+    },
+}
+
+impl RenderItem<'_> {
+    fn x_range(&self) -> (f32, f32) {
+        match self {
+            Self::Single { x_start, x_end, .. } | Self::Merged { x_start, x_end, .. } => {
+                (*x_start, *x_end)
+            }
+        }
+    }
+}
 
 /// View state for pan/zoom.
 #[derive(Default)]
@@ -343,6 +382,132 @@ impl ViewClass for StatusView {
     }
 }
 
+/// Walk a lane's phases and produce the list of items to render at the current zoom level,
+/// merging consecutive narrow visible phases into [`RenderItem::Merged`] regions.
+///
+/// Invisible phases break the merge chain so that user-hidden states remain hidden
+/// rather than being folded into a visible merged region. A run of narrow phases that
+/// contains a single phase is emitted as a [`RenderItem::Single`] (no merge marker).
+fn compute_render_items<'a>(
+    lane: &'a StatusLane,
+    lanes_rect: egui::Rect,
+    time_ranges_ui: &TimeRangesUi,
+) -> Vec<RenderItem<'a>> {
+    struct PendingNarrow<'a> {
+        phase: &'a StatusLanePhase,
+        x_start: f32,
+        x_end: f32,
+        end_time: Option<i64>,
+    }
+
+    /// Accumulator for consecutive narrow visible phases. Tracks only the first
+    /// pending phase and the current tail, since `flush` never needs anything
+    /// in between — emitting a `Single` (count == 1) or a `Merged` (count >= 2)
+    /// uses just the first start and the last end.
+    #[derive(Default)]
+    struct Pending<'a> {
+        first: Option<PendingNarrow<'a>>,
+        last_x_end: f32,
+        last_end_time: Option<i64>,
+        count: usize,
+    }
+
+    impl<'a> Pending<'a> {
+        fn push(&mut self, p: PendingNarrow<'a>) {
+            self.last_x_end = p.x_end;
+            self.last_end_time = p.end_time;
+            self.count += 1;
+            if self.first.is_none() {
+                self.first = Some(p);
+            }
+        }
+
+        fn flush(&mut self, items: &mut Vec<RenderItem<'a>>) {
+            let count = std::mem::take(&mut self.count);
+            let Some(first) = self.first.take() else {
+                return;
+            };
+            if count == 1 {
+                items.push(RenderItem::Single {
+                    phase: first.phase,
+                    x_start: first.x_start,
+                    x_end: first.x_end,
+                    end_time: first.end_time,
+                });
+            } else {
+                items.push(RenderItem::Merged {
+                    x_start: first.x_start,
+                    x_end: self.last_x_end,
+                    start_time: first.phase.start_time,
+                    end_time: self.last_end_time,
+                    count,
+                });
+            }
+        }
+    }
+
+    let mut items: Vec<RenderItem<'a>> = Vec::new();
+    let mut pending = Pending::default();
+
+    for (i, phase) in lane.phases.iter().enumerate() {
+        // Invisible phases create a gap; they must not be merged across.
+        if !phase.visible {
+            pending.flush(&mut items);
+            continue;
+        }
+
+        let next_start_time = lane.phases.get(i + 1).map(|p| p.start_time);
+        let Some(x_start) = time_ranges_ui.x_from_time_f32(TimeReal::from(phase.start_time as f64))
+        else {
+            continue;
+        };
+        let x_end_unclipped = match next_start_time {
+            Some(t) => time_ranges_ui
+                .x_from_time_f32(TimeReal::from(t as f64))
+                .unwrap_or_else(|| lanes_rect.right()),
+            None => lanes_rect.right(),
+        };
+
+        // Off-screen to the right: nothing past this is visible either.
+        // The post-loop flush below will handle any remaining pending phases.
+        if x_start >= lanes_rect.right() {
+            break;
+        }
+        // Off-screen to the left: skip but keep the merge chain going so the next
+        // visible phase can still merge with later ones.
+        if x_end_unclipped <= lanes_rect.left() {
+            continue;
+        }
+
+        let visible_x_start = x_start.max(lanes_rect.left());
+        let visible_x_end = x_end_unclipped.min(lanes_rect.right());
+        let width = visible_x_end - visible_x_start;
+        if width <= 0.0 {
+            continue;
+        }
+
+        if width >= MERGE_PHASE_THRESHOLD_PIXEL {
+            pending.flush(&mut items);
+            items.push(RenderItem::Single {
+                phase,
+                x_start: visible_x_start,
+                x_end: visible_x_end,
+                end_time: next_start_time,
+            });
+        } else {
+            pending.push(PendingNarrow {
+                phase,
+                x_start: visible_x_start,
+                x_end: visible_x_end,
+                end_time: next_start_time,
+            });
+        }
+    }
+    pending.flush(&mut items);
+
+    items
+}
+
 /// Compute the (min, max) time range across all lanes.
 fn data_time_range(lanes: &[&StatusLane]) -> (f64, f64) {
     let mut min = f64::MAX;
@@ -451,100 +616,160 @@ fn paint_lane(
     );
 
     let hover_pos = ui.input(|i| i.pointer.hover_pos());
+    let render_items = compute_render_items(lane, lanes_rect, time_ranges_ui);
 
-    // Phases.
-    for (i, phase) in lane.phases.iter().enumerate() {
-        if !phase.visible {
-            continue;
-        }
-        let Some(x_start) = time_ranges_ui.x_from_time_f32(TimeReal::from(phase.start_time as f64))
-        else {
-            continue;
-        };
-        let next_phase = lane.phases.get(i + 1);
-        let x_end = if let Some(next) = next_phase {
-            time_ranges_ui
-                .x_from_time_f32(TimeReal::from(next.start_time as f64))
-                .unwrap_or_else(|| lanes_rect.right())
-        } else {
-            lanes_rect.right()
-        };
+    let merged_fill_inactive = ui.visuals().widgets.inactive.bg_fill;
+    let merged_fill_hovered = ui.visuals().widgets.hovered.bg_fill;
+    let merged_text_color = ui.visuals().text_color();
 
-        // Clip to visible area.
-        let x_start = x_start.max(lanes_rect.left());
-        let x_end = x_end.min(lanes_rect.right());
-
-        if x_end <= x_start {
-            continue;
-        }
-
-        let phase_rect = egui::Rect::from_min_max(
+    for item in &render_items {
+        let (x_start, x_end) = item.x_range();
+        let item_rect = egui::Rect::from_min_max(
             egui::pos2(x_start, band_y_top),
             egui::pos2(x_end, band_y_bottom),
         );
+        let hovered = hover_pos.is_some_and(|pos| item_rect.contains(pos));
 
-        // Filled band. Dim when not hovered.
-        let hovered = hover_pos.is_some_and(|pos| phase_rect.contains(pos));
-        #[expect(clippy::disallowed_methods)]
-        // Data-driven visualization color, not a UI theme color.
-        let fill = if hovered {
-            phase.color
-        } else {
-            let [r, g, b, _] = phase.color.to_array();
-            egui::Color32::from_rgba_unmultiplied(r, g, b, 200)
-        };
-        painter.add(egui::epaint::RectShape::new(
-            phase_rect,
-            0.0,
-            fill,
-            egui::Stroke::NONE,
-            egui::StrokeKind::Outside,
-        ));
-
-        // Phase label (clipped to band width).
-        let text_width = x_end - x_start - 6.0;
-        if text_width > 10.0 {
-            painter.with_clip_rect(phase_rect).text(
-                egui::pos2(x_start + 4.0, band_y_top + 3.0),
-                egui::Align2::LEFT_TOP,
-                &phase.label,
-                egui::FontId::proportional(12.0),
-                readable_text_color(phase.color),
-            );
+        match item {
+            RenderItem::Single { phase, .. } => paint_single(painter, item_rect, phase, hovered),
+            RenderItem::Merged { count, .. } => {
+                let fill = if hovered {
+                    merged_fill_hovered
+                } else {
+                    merged_fill_inactive
+                };
+                paint_merged(painter, item_rect, *count, fill, merged_text_color);
+            }
         }
 
-        // Tooltip on hover.
         if let Some(pos) = hover_pos
-            && phase_rect.contains(pos)
+            && item_rect.contains(pos)
         {
-            let start = TimeCell::new(time_type, phase.start_time).format(timestamp_format);
-            egui::Tooltip::always_open(
-                ui.ctx().clone(),
-                ui.layer_id(),
-                egui::Id::new("state_tooltip"),
-                egui::PopupAnchor::Pointer,
-            )
-            .show(|ui| {
+            show_item_tooltip(ui, item, time_type, timestamp_format);
+        }
+    }
+}
+
+/// Paint one normal phase: filled band (dimmed when not hovered) + clipped label.
+fn paint_single(painter: &egui::Painter, rect: egui::Rect, phase: &StatusLanePhase, hovered: bool) {
+    #[expect(clippy::disallowed_methods)] // Data-driven visualization color, not a UI theme color.
+    let fill = if hovered {
+        phase.color
+    } else {
+        let [r, g, b, _] = phase.color.to_array();
+        egui::Color32::from_rgba_unmultiplied(r, g, b, 200)
+    };
+    painter.add(egui::epaint::RectShape::new(
+        rect,
+        0.0,
+        fill,
+        egui::Stroke::NONE,
+        egui::StrokeKind::Outside,
+    ));
+
+    if rect.width() - 6.0 > 10.0 {
+        painter.with_clip_rect(rect).text(
+            egui::pos2(rect.left() + 4.0, rect.top() + 3.0),
+            egui::Align2::LEFT_TOP,
+            &phase.label,
+            egui::FontId::proportional(12.0),
+            readable_text_color(phase.color),
+        );
+    }
+}
+
+/// Paint a merged region: a flat band in a theme widget color signaling that many
+/// narrow phases have been collapsed at the current zoom level. The caller picks the
+/// fill from `widgets.inactive`/`widgets.hovered` so the hover state stays
+/// token-driven rather than relying on an arbitrary multiplier.
+fn paint_merged(
+    painter: &egui::Painter,
+    rect: egui::Rect,
+    count: usize,
+    fill: egui::Color32,
+    text_color: egui::Color32,
+) {
+    painter.add(egui::epaint::RectShape::new(
+        rect,
+        0.0,
+        fill,
+        egui::Stroke::NONE,
+        egui::StrokeKind::Outside,
+    ));
+
+    if rect.width() - 6.0 > 24.0 {
+        let label = format!("{count} states");
+        painter.with_clip_rect(rect).text(
+            egui::pos2(rect.left() + 4.0, rect.top() + 3.0),
+            egui::Align2::LEFT_TOP,
+            label,
+            egui::FontId::proportional(12.0),
+            text_color,
+        );
+    }
+}
+
+fn show_item_tooltip(
+    ui: &egui::Ui,
+    item: &RenderItem<'_>,
+    time_type: TimeType,
+    timestamp_format: TimestampFormat,
+) {
+    egui::Tooltip::always_open(
+        ui.ctx().clone(),
+        ui.layer_id(),
+        egui::Id::new("state_tooltip"),
+        egui::PopupAnchor::Pointer,
+    )
+    .show(|ui| {
+        let weak = ui.visuals().weak_text_color();
+        let small = egui::FontId::proportional(11.0);
+        match item {
+            RenderItem::Single {
+                phase, end_time, ..
+            } => {
                 ui.label(&phase.label);
                 ui.add_space(4.0);
-                let weak = ui.visuals().weak_text_color();
-                let small = egui::FontId::proportional(11.0);
+                let start = TimeCell::new(time_type, phase.start_time).format(timestamp_format);
                 ui.label(
                     egui::RichText::new(format!("Start: {start}"))
                         .font(small.clone())
                         .color(weak),
                 );
-                if let Some(next) = next_phase {
-                    let end = TimeCell::new(time_type, next.start_time).format(timestamp_format);
+                if let Some(end) = end_time {
+                    let end = TimeCell::new(time_type, *end).format(timestamp_format);
                     ui.label(
                         egui::RichText::new(format!("End: {end}"))
                             .font(small)
                             .color(weak),
                     );
                 }
-            });
+            }
+            RenderItem::Merged {
+                start_time,
+                end_time,
+                count,
+                ..
+            } => {
+                ui.label(format!("{count} states (zoom in to see details)"));
+                ui.add_space(4.0);
+                let start = TimeCell::new(time_type, *start_time).format(timestamp_format);
+                ui.label(
+                    egui::RichText::new(format!("Start: {start}"))
+                        .font(small.clone())
+                        .color(weak),
+                );
+                if let Some(end) = end_time {
+                    let end = TimeCell::new(time_type, *end).format(timestamp_format);
+                    ui.label(
+                        egui::RichText::new(format!("End: {end}"))
+                            .font(small)
+                            .color(weak),
+                    );
+                }
+            }
         }
-    }
+    });
 }
 
 /// Choose white or black text depending on background luminance.
@@ -559,4 +784,169 @@ fn readable_text_color(bg: egui::Color32) -> egui::Color32 {
 #[test]
 fn test_help_view() {
     re_test_context::TestContext::test_help_view(|ctx| StatusView.help(ctx));
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use re_log_types::EntityPath;
+
+    /// Construct a `StatusLane` from `(start_time, visible)` pairs. Color/label are
+    /// unused by `compute_render_items`, so we leave them dummy.
+    fn lane(phases: &[(i64, bool)]) -> StatusLane {
+        StatusLane {
+            label: "test".into(),
+            entity_path: EntityPath::from("/test"),
+            phases: phases
+                .iter()
+                .map(|&(t, visible)| StatusLanePhase {
+                    start_time: t,
+                    label: String::new(),
+                    color: egui::Color32::TRANSPARENT,
+                    visible,
+                })
+                .collect(),
+        }
+    }
+
+    /// 100-pixel-wide lane rect; combined with a `TimeView` covering `[0, 100]`
+    /// this maps one time unit to one pixel, so phase widths in time equal pixel
+    /// widths.
+    fn unit_rect() -> egui::Rect {
+        egui::Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(100.0, 22.0))
+    }
+
+    fn ranges_ui(t_min: f64, t_max: f64) -> TimeRangesUi {
+        let time_view = TimeView {
+            min: TimeReal::from(t_min),
+            time_spanned: t_max - t_min,
+        };
+        let segment = AbsoluteTimeRange::new(
+            TimeInt::saturated_temporal_i64(t_min as i64),
+            TimeInt::saturated_temporal_i64(t_max.ceil() as i64),
+        );
+        TimeRangesUi::new(
+            unit_rect().x_range(),
+            time_view,
+            std::slice::from_ref(&segment),
+        )
+    }
+
+    fn is_single(item: &RenderItem<'_>, expected_start: i64) -> bool {
+        matches!(item, RenderItem::Single { phase, .. } if phase.start_time == expected_start)
+    }
+
+    fn is_merged(item: &RenderItem<'_>, expected_start: i64, expected_count: usize) -> bool {
+        matches!(
+            item,
+            RenderItem::Merged { start_time, count, .. }
+                if *start_time == expected_start && *count == expected_count
+        )
+    }
+
+    #[test]
+    fn empty_lane_produces_no_items() {
+        let lane = lane(&[]);
+        let items = compute_render_items(&lane, unit_rect(), &ranges_ui(0.0, 100.0));
+        assert!(items.is_empty(), "{items:?}");
+    }
+
+    #[test]
+    fn single_wide_phase_renders_as_single() {
+        // One phase covering x=0..100 — well above the merge threshold.
+        let lane = lane(&[(0, true)]);
+        let items = compute_render_items(&lane, unit_rect(), &ranges_ui(0.0, 100.0));
+        assert_eq!(items.len(), 1, "{items:?}");
+        assert!(is_single(&items[0], 0), "{items:?}");
+    }
+
+    #[test]
+    fn lone_narrow_phase_renders_as_single_not_merged() {
+        // Phase 0: x=0..2 (narrow). Phase 1: x=2..100 (wide).
+        // The narrow phase has no narrow neighbor to merge with, so it stays Single.
+        let lane = lane(&[(0, true), (2, true)]);
+        let items = compute_render_items(&lane, unit_rect(), &ranges_ui(0.0, 100.0));
+        assert_eq!(items.len(), 2, "{items:?}");
+        assert!(is_single(&items[0], 0), "{items:?}");
+        assert!(is_single(&items[1], 2), "{items:?}");
+    }
+
+    #[test]
+    fn two_consecutive_narrow_phases_merge() {
+        // Two narrow (x=0..2, 2..4) + one wide (x=4..100).
+        let lane = lane(&[(0, true), (2, true), (4, true)]);
+        let items = compute_render_items(&lane, unit_rect(), &ranges_ui(0.0, 100.0));
+        assert_eq!(items.len(), 2, "{items:?}");
+        assert!(is_merged(&items[0], 0, 2), "{items:?}");
+        assert!(is_single(&items[1], 4), "{items:?}");
+    }
+
+    #[test]
+    fn wide_phase_breaks_merge_chain() {
+        // Wide (0..10), narrow (10..12), wide (12..100) — the lone narrow stays Single.
+        let lane = lane(&[(0, true), (10, true), (12, true)]);
+        let items = compute_render_items(&lane, unit_rect(), &ranges_ui(0.0, 100.0));
+        assert_eq!(items.len(), 3, "{items:?}");
+        assert!(is_single(&items[0], 0), "{items:?}");
+        assert!(is_single(&items[1], 10), "{items:?}");
+        assert!(is_single(&items[2], 12), "{items:?}");
+    }
+
+    #[test]
+    fn invisible_phase_breaks_merge_chain() {
+        // narrow visible (0..2), narrow invisible (2..4), narrow visible (4..6), wide (6..100).
+        // The two visible narrow phases must NOT merge across the invisible gap.
+        let lane = lane(&[(0, true), (2, false), (4, true), (6, true)]);
+        let items = compute_render_items(&lane, unit_rect(), &ranges_ui(0.0, 100.0));
+        assert_eq!(items.len(), 3, "{items:?}");
+        assert!(is_single(&items[0], 0), "{items:?}");
+        assert!(is_single(&items[1], 4), "{items:?}");
+        assert!(is_single(&items[2], 6), "{items:?}");
+    }
+
+    #[test]
+    fn off_screen_left_phases_dont_break_merge_chain() {
+        // Viewport t=[30, 130]: phases at 0 and 5 are entirely off-screen left;
+        // phases at 10 and 32 are narrow on-screen; phase at 34 is wide.
+        // The two on-screen narrow phases must merge — the off-screen phases
+        // shouldn't terminate the run.
+        let lane = lane(&[(0, true), (5, true), (10, true), (32, true), (34, true)]);
+        let items = compute_render_items(&lane, unit_rect(), &ranges_ui(30.0, 130.0));
+        assert_eq!(items.len(), 2, "{items:?}");
+        assert!(is_merged(&items[0], 10, 2), "{items:?}");
+        assert!(is_single(&items[1], 34), "{items:?}");
+    }
+
+    #[test]
+    fn off_screen_right_phase_stops_iteration() {
+        // Viewport t=[0, 100], two visible wide phases, then one off-screen right.
+        let lane = lane(&[(0, true), (10, true), (200, true)]);
+        let items = compute_render_items(&lane, unit_rect(), &ranges_ui(0.0, 100.0));
+        assert_eq!(items.len(), 2, "{items:?}");
+        assert!(is_single(&items[0], 0), "{items:?}");
+        assert!(is_single(&items[1], 10), "{items:?}");
+    }
+
+    #[test]
+    fn trailing_narrow_run_flushes_as_merged_after_loop() {
+        // 50 narrow phases spaced 2 apart, covering the entire visible range.
+        // Verifies that the post-loop flush emits the Merged region (no wide phase
+        // forces an earlier flush).
+        let phases: Vec<(i64, bool)> = (0..50).map(|i| (i * 2, true)).collect();
+        let lane = lane(&phases);
+        let items = compute_render_items(&lane, unit_rect(), &ranges_ui(0.0, 100.0));
+        assert_eq!(items.len(), 1, "{items:?}");
+        assert!(is_merged(&items[0], 0, 50), "{items:?}");
+    }
+
+    #[test]
+    fn trailing_narrow_run_flushes_when_remaining_phases_are_off_screen_right() {
+        // Two narrow phases (50..52, 52..54), then a wide (54..100), then a phase
+        // at t=200 that's off-screen-right. The merge group must still be emitted.
+        let lane = lane(&[(50, true), (52, true), (54, true), (200, true)]);
+        let items = compute_render_items(&lane, unit_rect(), &ranges_ui(0.0, 100.0));
+        assert_eq!(items.len(), 2, "{items:?}");
+        assert!(is_merged(&items[0], 50, 2), "{items:?}");
+        assert!(is_single(&items[1], 54), "{items:?}");
+    }
 }
