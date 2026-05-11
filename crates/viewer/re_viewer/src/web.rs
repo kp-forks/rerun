@@ -786,7 +786,7 @@ fn create_app(
         enable_history,
         viewer_base_url,
         login,
-        enable_experimental_status_view: false,
+        enable_experimental_state_timeline_view: false,
     };
     crate::customize_eframe_and_setup_renderer(cc)?;
 

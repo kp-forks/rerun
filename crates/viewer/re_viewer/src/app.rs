@@ -286,12 +286,12 @@ impl App {
             state.app_options = AppOptions::test();
         }
 
-        if startup_options.enable_experimental_status_view {
-            state.app_options.experimental.enable_status_view = true;
+        if startup_options.enable_experimental_state_timeline_view {
+            state.app_options.experimental.enable_state_timeline_view = true;
         }
 
-        if startup_options.enable_experimental_status_view {
-            state.app_options.experimental.enable_status_view = true;
+        if startup_options.enable_experimental_state_timeline_view {
+            state.app_options.experimental.enable_state_timeline_view = true;
         }
 
         let reflection = re_sdk_types::reflection::generate_reflection().unwrap_or_else(|err| {

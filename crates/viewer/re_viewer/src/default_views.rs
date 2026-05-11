@@ -77,8 +77,8 @@ fn populate_view_class_registry_with_builtin(
         app_options,
         fallback_registry,
     )?;
-    if app_options.experimental.enable_status_view {
-        view_class_registry.add_class::<re_view_status::StatusView>(
+    if app_options.experimental.enable_state_timeline_view {
+        view_class_registry.add_class::<re_view_state_timeline::StateTimelineView>(
             reflection,
             app_options,
             fallback_registry,

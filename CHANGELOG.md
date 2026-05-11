@@ -41,14 +41,9 @@ Limitations, or why this is still experimental:
 * depending on the number and content of previews, overall runtime performance can be poor, especially in the browser
 * many UX details are still unfinished
 
-#### Experimental status view
+#### Experimental state timeline view
 
-TODO(aedm): rename
-TODO(aedm): please fill out
-
-- New `StatusConfiguration` archetype for the Status view. Maps raw status values to display labels, colors, and visibility. Editable from the selection panel.
-- Status view: click a phase to select the entity; click or drag empty space to set/scrub the time cursor; right- or middle-click + drag to pan; Cmd/Ctrl+scroll to zoom.
-- Status phase colors are now derived from a hash of the status value, so adding or reordering entries in the configuration no longer shifts existing colors.
+A new experimental view for visualizing discrete state transitions over time as horizontal colored lanes, useful for state machines, mode transitions, and similar discrete signals. Log state changes with the new `StateChange` archetype; configure their display on the UI or using `StateConfiguration` in the blueprint API.
 
 #### `GridMap` archetype and MCAP support for ROS occupancy grids
 

@@ -20,7 +20,7 @@ pub struct HarnessOptions {
     pub step_dt: Option<f32>,
     pub startup_url: Option<String>,
     pub enable_component_mapping: bool,
-    pub enable_experimental_status_view: bool,
+    pub enable_experimental_state_timeline_view: bool,
 
     /// Allows the test to set `AppOptions` at start.
     pub app_options_editor: Option<AppOptionsEditor>,
@@ -50,7 +50,8 @@ pub fn viewer_harness(options: &HarnessOptions) -> Harness<'static, App> {
                 // Don't show the welcome / example screen in tests.
                 // See also: https://github.com/rerun-io/rerun/issues/10989
                 hide_welcome_screen: true,
-                enable_experimental_status_view: options.enable_experimental_status_view,
+                enable_experimental_state_timeline_view: options
+                    .enable_experimental_state_timeline_view,
                 ..Default::default()
             },
             cc,
