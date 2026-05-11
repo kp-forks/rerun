@@ -159,14 +159,14 @@ pub struct DataframeSegmentStreamInner<T: DataframeClientAPI> {
     pipeline_budget: Arc<PipelineBudget>,
 }
 
-/// This is a temporary fix to minimize the impact of leaking memory
-/// per issue <https://github.com/rerun-io/dataplatform/issues/1494>
-/// The work around is to check for when the stream has exhausted and
-/// to set the `inner` to None, thereby clearing the memory since
-/// we are not properly getting a `drop` call from the upstream
-/// FFI interface. When the upstream issue resolves, change
-/// `DataframeSegmentStreamInner` back into `DataframeSegmentStream`
-/// and delete this wrapper struct.
+// TODO(RR-4607): This is a temporary fix to minimize the impact of leaking memory
+// per issue <https://github.com/rerun-io/dataplatform/issues/1494>.
+// The work around is to check for when the stream has exhausted and
+// to set the `inner` to None, thereby clearing the memory since
+// we are not properly getting a `drop` call from the upstream
+// FFI interface. When the upstream issue resolves, change
+// `DataframeSegmentStreamInner` back into `DataframeSegmentStream`
+// and delete this wrapper struct.
 pub struct DataframeSegmentStream<T: DataframeClientAPI> {
     inner: Option<DataframeSegmentStreamInner<T>>,
 }
