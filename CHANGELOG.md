@@ -117,9 +117,12 @@ You may have noticed a new Rerun logo and app icon! We've also slightly tweaked 
 Several improvements in the open-source Rerun SDK are designed specifically to work with Rerun Hub.
  Here are the key updates that are especially relevant if you're a customer of Rerun Hub:
 
-#### Direct download from s3
+#### Direct fetch from object storage for commercial `Rerun Hub` customers
 
-TODO(ilya): please fill out
+The SDK will now fetch chunk data directly from the object store that holds your recordings, without needing to proxy the data through the server.
+This allows for better performance in highly parallel workloads, as well as lower latency when the client is located close to the data store.
+
+The old proxy path is still supported, and can be opted into using the `RERUN_CHUNK_STRATEGY=grpc` environment variable.
 
 #### Experimental training dataloader
 
