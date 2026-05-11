@@ -2135,7 +2135,7 @@ requires-dist = [
     { name = "polars", marker = "extra == 'tests'", specifier = "==1.36.1" },
     { name = "psutil", specifier = ">=7.0" },
     { name = "pyarrow", specifier = ">=18.0.0" },
-    { name = "pytest", marker = "extra == 'tests'", specifier = "==8.4.2" },
+    { name = "pytest", marker = "extra == 'tests'", specifier = "==9.0.3" },
     { name = "rerun-notebook", marker = "extra == 'all'", editable = "../../../rerun_notebook" },
     { name = "rerun-notebook", marker = "extra == 'notebook'", editable = "../../../rerun_notebook" },
     { name = "semver", marker = "extra == 'tests'", specifier = ">=3.0,<3.1" },
