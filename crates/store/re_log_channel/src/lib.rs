@@ -90,7 +90,7 @@ pub enum LogSource {
     /// The data is streaming in from standard input.
     Stdin,
 
-    /// The data is streaming in directly from a Rerun Data Platform server,
+    /// The data is streaming in directly from a catalog server,
     /// over `rerun://` gRPC interface.
     RedapGrpcStream {
         uri: re_uri::DatasetSegmentUri,

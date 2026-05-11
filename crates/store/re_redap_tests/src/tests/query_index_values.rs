@@ -158,7 +158,7 @@ async fn per_segment_chunk_id_set<T: RerunCloudService>(
 ///
 /// Returns the [`DataSourcesDefinition`] so the caller can hold its temp
 /// files alive for the full duration of the test — some backends (the Rerun
-/// Data Platform manifest registry) re-read the RRD files lazily during
+/// Rerun Hub manifest registry) re-read the RRD files lazily during
 /// `query_dataset`, so dropping the temp dir before that completes results
 /// in `NotFound` errors.
 async fn register_per_segment_dataset(
@@ -222,7 +222,7 @@ fn per_segment_segment_ids() -> Vec<re_protos::common::v1alpha1::ext::SegmentId>
 ///    (proves the per-segment selection diverged from a plain latest-at).
 ///
 /// This is the regression-guard for the OSS server's per-segment chunk filter
-/// (PR-E). The Rerun Data Platform server scaffolding lands the same shape but
+/// (PR-E). The Rerun Hub server scaffolding lands the same shape but
 /// currently no-ops the filter (TODO(tsaucer): RR-4355) — that test will be
 /// activated when the Lance pre-filter implementation lands.
 pub async fn query_dataset_per_segment_values_wire_level(service: impl RerunCloudService) {
@@ -583,7 +583,7 @@ pub async fn query_dataset_per_segment_values_validation_rejected(service: impl 
 ///
 /// * the OSS server's per-row filter (`requested_chunk_ids.contains(…)`)
 ///   in `rerun_cloud.rs` honors the intersection, and
-/// * the Data Platform's set-intersection in `manifest_registry.rs` does too.
+/// * the Rerun Hub's set-intersection in `manifest_registry.rs` does too.
 ///
 /// **Backend-conditional**: the OSS server currently returns
 /// `Unimplemented` whenever `chunk_ids` is non-empty (see
@@ -728,8 +728,8 @@ pub async fn version_advertises_per_segment_index_values_feature(service: impl R
 /// entity_paths=[])` truth-table case from `cloud.proto`.
 ///
 /// Per the proto: `(false, [])` is a valid query that yields no results
-/// regardless of the rest of the filter. Both the Data Platform and OSS
-/// `re_server` honor this — the Data Platform via the per-segment
+/// regardless of the rest of the filter. Both the Rerun Hub and OSS
+/// `re_server` honor this — the Rerun Hub via the per-segment
 /// short-circuit added in this PR, OSS via the entity-filter check in
 /// `get_chunks_for_query_results`.
 pub async fn query_dataset_per_segment_values_empty_entity_paths_short_circuits(

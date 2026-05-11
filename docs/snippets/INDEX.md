@@ -20,16 +20,16 @@ Use it to quickly find copy-pastable snippets of code for any Rerun feature you'
 
 | Feature | Example | Description | Python | Rust | C+⁠+ |
 | ------- | ------- | ----------- | :----: | :--: | :-------: |
-| **Query Data Platform** | `dataframe_operations` | Demonstrate common dataframe operations with Rerun Data Platform | [🐍](https://github.com/rerun-io/rerun/blob/main/docs/snippets/all/howto/dataframe_operations.py) |  |  |
-| **Query Data Platform** | `dataframe_performance` | Sample snippets highlighting common performance-related improvements | [🐍](https://github.com/rerun-io/rerun/blob/main/docs/snippets/all/howto/dataframe_performance.py) |  |  |
-| **Query Data Platform** | `dataset_resampling` | Sample snippets highlighting common performance-related improvements | [🐍](https://github.com/rerun-io/rerun/blob/main/docs/snippets/all/howto/dataset_resampling.py) |  |  |
-| **Query Data Platform** | `lerobot_export` | Demonstrate converting Rerun recording to LeRobot dataset | [🐍](https://github.com/rerun-io/rerun/blob/main/docs/snippets/all/howto/lerobot_export.py) |  |  |
-| **Query Data Platform** | `query_images` | Query various image representations | [🐍](https://github.com/rerun-io/rerun/blob/main/docs/snippets/all/howto/query_images.py) |  |  |
-| **Query Data Platform** | `query_videos` | Query video streams | [🐍](https://github.com/rerun-io/rerun/blob/main/docs/snippets/all/howto/query_videos.py) |  |  |
-| **Query Data Platform** | `query_video_keyframes` | Query video streams efficiently using keyframe information | [🐍](https://github.com/rerun-io/rerun/blob/main/docs/snippets/all/howto/query_video_keyframes.py) |  |  |
-| **Query Data Platform** | `sub_dataset` | Create a new dataset from a subset of segments of an existing dataset | [🐍](https://github.com/rerun-io/rerun/blob/main/docs/snippets/all/howto/sub_dataset.py) |  |  |
-| **Query Data Platform** | `time_alignment` | Efficiently time align multirate columns | [🐍](https://github.com/rerun-io/rerun/blob/main/docs/snippets/all/howto/time_alignment.py) |  |  |
-| **Query Data Platform** | `view_operations` | Leverage filters to more efficiently perform downstream queries | [🐍](https://github.com/rerun-io/rerun/blob/main/docs/snippets/all/howto/view_operations.py) |  |  |
+| **Catalog server** | `dataframe_operations` | Demonstrate common dataframe operations with a catalog server | [🐍](https://github.com/rerun-io/rerun/blob/main/docs/snippets/all/howto/dataframe_operations.py) |  |  |
+| **Catalog server** | `dataframe_performance` | Sample snippets highlighting common performance-related improvements | [🐍](https://github.com/rerun-io/rerun/blob/main/docs/snippets/all/howto/dataframe_performance.py) |  |  |
+| **Catalog server** | `dataset_resampling` | Sample snippets highlighting common performance-related improvements | [🐍](https://github.com/rerun-io/rerun/blob/main/docs/snippets/all/howto/dataset_resampling.py) |  |  |
+| **Catalog server** | `lerobot_export` | Demonstrate converting Rerun recording to LeRobot dataset | [🐍](https://github.com/rerun-io/rerun/blob/main/docs/snippets/all/howto/lerobot_export.py) |  |  |
+| **Catalog server** | `query_images` | Query various image representations | [🐍](https://github.com/rerun-io/rerun/blob/main/docs/snippets/all/howto/query_images.py) |  |  |
+| **Catalog server** | `query_videos` | Query video streams | [🐍](https://github.com/rerun-io/rerun/blob/main/docs/snippets/all/howto/query_videos.py) |  |  |
+| **Catalog server** | `query_video_keyframes` | Query video streams efficiently using keyframe information | [🐍](https://github.com/rerun-io/rerun/blob/main/docs/snippets/all/howto/query_video_keyframes.py) |  |  |
+| **Catalog server** | `sub_dataset` | Create a new dataset from a subset of segments of an existing dataset | [🐍](https://github.com/rerun-io/rerun/blob/main/docs/snippets/all/howto/sub_dataset.py) |  |  |
+| **Catalog server** | `time_alignment` | Efficiently time align multirate columns | [🐍](https://github.com/rerun-io/rerun/blob/main/docs/snippets/all/howto/time_alignment.py) |  |  |
+| **Catalog server** | `view_operations` | Leverage filters to more efficiently perform downstream queries | [🐍](https://github.com/rerun-io/rerun/blob/main/docs/snippets/all/howto/view_operations.py) |  |  |
 | **Setting recording properties** | `recording_properties` | Sets the recording properties | [🐍](https://github.com/rerun-io/rerun/blob/main/docs/snippets/all/concepts/recording_properties.py) | [🦀](https://github.com/rerun-io/rerun/blob/main/docs/snippets/all/concepts/recording_properties.rs) | [🌊](https://github.com/rerun-io/rerun/blob/main/docs/snippets/all/concepts/recording_properties.cpp) |
 | **Setting recording properties** | `segment_properties` | Query and display the first 10 rows of a recording | [🐍](https://github.com/rerun-io/rerun/blob/main/docs/snippets/all/concepts/query-and-transform/segment_properties.py) |  |  |
 | **Setting recording properties** | `layers` |  | [🐍](https://github.com/rerun-io/rerun/blob/main/docs/snippets/all/howto/layers.py) |  |  |

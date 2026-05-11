@@ -163,7 +163,7 @@ pub enum SystemCommand {
         email: String,
     },
 
-    /// Logout from rerun cloud
+    /// Logout from Rerun Hub
     Logout,
 
     /// Save a screenshot to a file.

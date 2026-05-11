@@ -1,4 +1,4 @@
-"""User-facing configuration dataclasses for Rerun Data Platform-backed Torch datasets."""
+"""User-facing configuration dataclasses for catalog-server-backed Torch datasets."""
 
 from __future__ import annotations
 

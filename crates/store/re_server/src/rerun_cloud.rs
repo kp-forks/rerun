@@ -1726,7 +1726,7 @@ impl RerunCloudService for RerunCloudHandler {
     type FetchChunksStream = FetchChunksResponseStream;
 
     // NOTE: OSS server does not detect source drift (a registered rrd file
-    // being mutated after registration) which the Rerun Data Platform implements.
+    // being mutated after registration) which Rerun Hub implements.
     // Consider if worth having parity (RR-4577).
     async fn fetch_chunks(
         &self,

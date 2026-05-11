@@ -59,7 +59,7 @@ dataplatform = [ # NOLINT
   "pandas>=2",
 ] # pandas is needed so pyarrow properly converts nanoseconds (RR-3532)
 
-# PyTorch `Dataset` for the Rerun Data Platform.
+# PyTorch `Dataset` for a catalog server.
 dataloader = ["torch>=2.5", "torchvision", "av", "pillow>=8.0.0"]
 
 # Client-side OpenTelemetry export, enabled by setting `TELEMETRY_ENABLED=true`

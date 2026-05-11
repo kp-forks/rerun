@@ -16,7 +16,7 @@ It includes:
 - Readers for common file formats (RRD, MCAP, Parquet, and URDF—with more to come) which stream chunks.
 - A composable `LazyChunkStream` class to define memory-bounded chunk-based filtering and transformation pipelines.
 - Lenses: an expressive and performant API to manipulate component data in chunks.
-- Interoperability with the Rerun Data Platform and logging SDK.
+- Interoperability with a catalog server and the Rerun SDK logging API.
 
 The chunk processing API includes a multithreaded, GIL-free, native engine, and its design allows for distributed execution in the future.
 
@@ -112,10 +112,10 @@ This release comes with a few significant performance improvements. Among other 
 
 You may have noticed a new Rerun logo and app icon! We've also slightly tweaked our color palette. Stay tuned for more exciting news!
 
-### ☁️ Highlights for Rerun base customers
+### ☁️ Highlights for Rerun Hub customers
 
-Several improvements in the open-source Rerun SDK are designed specifically to work with our data platform offering.
- Here are the key updates that are especially relevant if you're a customer of Rerun Base:
+Several improvements in the open-source Rerun SDK are designed specifically to work with Rerun Hub.
+ Here are the key updates that are especially relevant if you're a customer of Rerun Hub:
 
 #### Direct download from s3
 
@@ -131,7 +131,7 @@ Each field accepts an optional `window=(start_offset, end_offset)` parameter, an
 
 See the new [LeRobot ACT training example](https://github.com/rerun-io/rerun/tree/main/examples/python/dataloader).
 
-Expect breaking changes between releases while we iterate on the design. For large-scale training, the Rerun Data Platform offers a higher-performance backend.
+Expect breaking changes between releases while we iterate on the design. For large-scale training, Rerun Hub offers a higher-performance backend.
 
 ### ⚠️ Breaking changes
 
@@ -742,7 +742,7 @@ And finally, thanks to a contribution from [@vfilter](https://github.com/vfilter
 </picture>
 
 #### 📡 On-demand streaming / larger-than-RAM
-The Rerun Viewer now supports _on-demand streaming_, when connected to either the OSS server or [Rerun Cloud](https://5li7zhj98k8.typeform.com/to/a5XDpBkZ?typeform-source=rerun.io).
+The Rerun Viewer now supports _on-demand streaming_, when connected to either the OSS server or [Rerun Hub](https://5li7zhj98k8.typeform.com/to/a5XDpBkZ?typeform-source=rerun.io).
 
 With on-demand streaming, whatever you are currently viewing will be downloaded first.
 This includes time-scrubbing to the end of a very long recording and quickly seeing what is there, or viewing only one camera feed of many.
@@ -751,7 +751,7 @@ Of course, your memory limit will be respected, and when you change your view or
 
 This also means that the web viewer can finally view recordings larger than the 4GiB limit enforced by Wasm32, as long as those recordings are served by a Rerun server.
 
-It also means that Rerun Cloud users can view huge recordings, larger than what fits into RAM.
+It also means that Rerun Hub users can view huge recordings, larger than what fits into RAM.
 The OSS server, however, still loads everything into RAM before serving it.
 
 Usage:
@@ -1117,7 +1117,7 @@ You can now get some insight on which parts of your recording use how much memor
 - **Python**: Internal submodules moved to underscore-prefixed names (e.g., `rr.color_conversion` → `rr._color_conversion`)
 - **CLI**: `rerun server --addr` renamed to `rerun server --host`
 - **Blueprint**: Component overrides from `.rbl` files created in previous versions cannot be loaded in 0.29
-- **Data Platform**: Datasets need re-registration to populate `name` and `start_time` in segment table
+- **Catalog server**: Datasets need re-registration to populate `name` and `start_time` in segment table
 
 🧳 Check the migration guide for details: https://rerun.io/docs/reference/migration/migration-0-29
 
@@ -1474,7 +1474,7 @@ MCAP timelines renamed from `log_time`/`publish_time` to `message_log_time`/`mes
 - Implement the search service [#11954](https://github.com/rerun-io/rerun/pull/11954)
 - Add `MapProvider::MapboxLight` [#12083](https://github.com/rerun-io/rerun/pull/12083) (thanks [@sectore](https://github.com/sectore)!)
 - Implement streaming for datafusion table [#12162](https://github.com/rerun-io/rerun/pull/12162)
-- Add rerun cloud section to welcome page [#12051](https://github.com/rerun-io/rerun/pull/12051)
+- Add Rerun Hub section to welcome page [#12051](https://github.com/rerun-io/rerun/pull/12051)
 - Add support for server side filtering of DataFusion DataFrames [#12147](https://github.com/rerun-io/rerun/pull/12147)
 - Fix compaction of recordings containing video streams [35810c74187c250925e958a8f095756915313ce7](https://github.com/rerun-io/rerun/commit/35810c74187c250925e958a8f095756915313ce7)
 - Python SDK: Add timeout_sec argument to flush [f69d249e5c6bc5225d8f2f0be384243ab9dacf03](https://github.com/rerun-io/rerun/commit/f69d249e5c6bc5225d8f2f0be384243ab9dacf03)
@@ -1874,7 +1874,7 @@ See the
 -   Allow opening web viewer links directly [#10928](https://github.com/rerun-io/rerun/pull/10928)
 -   Add keyboard shortcut to copy entity hierarchy [#10938](https://github.com/rerun-io/rerun/pull/10938)
 -   Add H.265 support for native & `VideoStream` [#10994](https://github.com/rerun-io/rerun/pull/10994)
--   Support sharing URLs for Data Platform datasets & tables [#11038](https://github.com/rerun-io/rerun/pull/11038)
+-   Support sharing URLs for catalog server datasets & tables [#11038](https://github.com/rerun-io/rerun/pull/11038)
 -   New open from URL dialog & main menu entry [#11040](https://github.com/rerun-io/rerun/pull/11040)
 -   Add archetypes for MCAP metadata [#11062](https://github.com/rerun-io/rerun/pull/11062)
 -   Add `opacity` setting for `VideoStream` & `VideoAsset` [#11113](https://github.com/rerun-io/rerun/pull/11113)
@@ -1906,7 +1906,7 @@ See the
 -   Add share link button to time panel context menu [#11186](https://github.com/rerun-io/rerun/pull/11186)
 
 #### 🕸️ Web
--   Improve browser navigation for http & Rerun Data Platform links [#10863](https://github.com/rerun-io/rerun/pull/10863)
+-   Improve browser navigation for http & catalog server links [#10863](https://github.com/rerun-io/rerun/pull/10863)
 -   pixi: Use llvm-ar from PATH on macOS, avoid unexpanded ${PIXI_PROJECT… [#10910](https://github.com/rerun-io/rerun/pull/10910) (thanks [@matildasmeds](https://github.com/matildasmeds)!)
 
 #### 🧑‍💻 Dev-experience

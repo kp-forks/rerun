@@ -1,4 +1,4 @@
-"""Map-style Dataset backed by the Rerun Data Platform."""
+"""Map-style Dataset backed by a catalog server."""
 
 from __future__ import annotations
 
@@ -18,7 +18,7 @@ if TYPE_CHECKING:
 
 class RerunMapDataset(torch.utils.data.Dataset[dict[str, torch.Tensor]]):
     """
-    Map-style dataset backed by the Rerun Data Platform.
+    Map-style dataset backed by a catalog server.
 
     Supports random access by global index, so it works with PyTorch's
     sampler ecosystem (`DistributedSampler`, `WeightedRandomSampler`,

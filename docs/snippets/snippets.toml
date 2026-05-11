@@ -35,7 +35,7 @@
 [snippets_ref]
 features = [
   [
-    "Query Data Platform",
+    "Catalog server",
     [
       "howto/dataframe_operations",
       "howto/dataframe_performance",
@@ -143,7 +143,7 @@ backwards_check = [
   "concepts/explicit_recording", # The file path differs locally and on CI
   "howto/convert_mcap_protobuf", # Processes video from MCAP, non-deterministic encoding
   "howto/convert_mcap_protobuf_send_column",
-  # Dataplatform examples don't generate rrds
+  # Catalog server examples don't generate rrds
   "concepts/query-and-transform/dataframe_query_example",
   "concepts/query-and-transform/segment_properties",
   "howto/dataframe_operations",

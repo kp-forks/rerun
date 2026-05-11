@@ -13,7 +13,7 @@ class OptimizationProfile:
 
     - `OptimizationProfile.LIVE`: small chunks tuned for the live Viewer workflow.
     - `OptimizationProfile.OBJECT_STORE`: large chunks tuned for object-store-backed
-      query and streaming (e.g. the Rerun Data Platform).
+      query and streaming (e.g. a catalog server).
 
     The presets are *fully concrete*: every field has a value. Custom profiles
     built by calling `OptimizationProfile(...)` directly may pass `None` on the
@@ -29,7 +29,7 @@ class OptimizationProfile:
 
     OBJECT_STORE: ClassVar[OptimizationProfile]
     """
-    Optimized for object-store-backed storage (e.g. the Rerun Data Platform):
+    Optimized for object-store-backed storage (e.g. a catalog server):
     larger chunks tuned for query throughput and streaming over the network.
     """
 

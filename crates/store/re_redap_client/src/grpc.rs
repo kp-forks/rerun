@@ -390,7 +390,7 @@ impl std::fmt::Debug for StreamingOptions {
     }
 }
 
-/// Canonical way to ingest segment data from a Rerun Data Platform server, dealing with
+/// Canonical way to ingest segment data from a catalog server, dealing with
 /// server-stored blueprints if any.
 ///
 /// The current strategy currently consists of _always_ downloading the blueprint first and setting

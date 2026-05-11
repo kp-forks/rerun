@@ -1,4 +1,4 @@
-"""IterableDataset backed by the Rerun Data Platform."""
+"""IterableDataset backed by a catalog server."""
 
 from __future__ import annotations
 
@@ -25,7 +25,7 @@ if TYPE_CHECKING:
 
 class RerunIterableDataset(torch.utils.data.IterableDataset[dict[str, torch.Tensor]]):
     """
-    Iterable dataset backed by the Rerun Data Platform.
+    Iterable dataset backed by a catalog server.
 
     Fetches `fetch_size` samples per server query and yields individual
     samples, so per-query overhead is amortized across many samples while

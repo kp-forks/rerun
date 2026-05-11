@@ -1,6 +1,6 @@
 //! Per-connection analytics for dataset queries.
 //!
-//! Each connection to a Rerun Cloud instance gets its own analytics sender
+//! Each connection to a Rerun Hub instance gets its own analytics sender
 //! that forwards OTLP trace events to that instance's OTEL ingest endpoint.
 //! This ensures analytics go to the correct cloud when the viewer is connected
 //! to multiple clouds simultaneously.
@@ -41,7 +41,7 @@ use web_time::{Duration, SystemTime};
 const EXPORT_PATH: &str = "/opentelemetry.proto.collector.trace.v1.TraceService/Export";
 
 /// A per-connection analytics client that sends OTLP traces to a specific
-/// Rerun Cloud's OTEL ingest endpoint.
+/// Rerun Hub's OTEL ingest endpoint.
 ///
 /// Cheap to clone (wraps an `Arc`).
 ///
@@ -162,7 +162,7 @@ impl ConnectionAnalytics {
         let fut = async move {
             if let Err(err) = this.send_span_impl(span, trace_id).await {
                 re_log::debug_once!(
-                    "Failed to send analytics to Rerun Cloud: {} ({})",
+                    "Failed to send analytics to Rerun Hub: {} ({})",
                     err.code(),
                     err.message()
                 );
@@ -879,7 +879,7 @@ fn build_query_span(
 /// Underlying provider variant of a table entry.
 ///
 /// Bounded so the analytics dimension cardinality stays low. Add a variant if
-/// the Data Platform exposes a new system or storage backend.
+/// the catalog server exposes a new system or storage backend.
 #[derive(Clone, Copy, Debug)]
 pub enum TableKind {
     /// User-registered Lance-backed table.

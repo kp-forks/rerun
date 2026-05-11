@@ -273,7 +273,7 @@ Authentication with the redap.
 
 Log into Rerun.
 
-This command opens a page in your default browser, allowing you to log in to the Rerun Data Platform.
+This command opens a page in your default browser, allowing you to log in to Rerun Hub.
 
 Once you've logged in, your credentials are stored on your machine.
 
@@ -312,7 +312,7 @@ This command clears the credentials stored on your machine and ends your session
 
 Generate a fresh access token.
 
-You can use this token to authorize requests to the Rerun Data Platform.
+You can use this token to authorize requests to Rerun Hub.
 
 It's closer to an API key than an access token, as it can be revoked before it expires.
 
@@ -337,7 +337,7 @@ It's closer to an API key than an access token, as it can be revoked before it e
 
 Download recordings and save them as .rrd files.
 
-Supports downloading from Rerun Cloud as well as any other supported URI.
+Supports downloading from Rerun Hub as well as any other supported URI.
 
 **Usage**: `rerun download [OPTIONS] <URLS>…`
 

@@ -216,7 +216,7 @@ impl ConnectionRegistryHandle {
     /// use the following token, in this order:
     /// - The fallback token, if set via [`Self::set_fallback_token`].
     /// - The `REDAP_TOKEN` environment variable is set.
-    /// - Local credentials for Rerun Cloud
+    /// - Local credentials for Rerun Hub
     ///
     /// Failing that, no token will be used.
     #[tracing::instrument(level = "info", skip_all)]
@@ -379,7 +379,7 @@ impl ConnectionRegistryHandle {
         }
 
         let hint = suggest_api_prefix(origin).map(|suggested| {
-            format!("Did you mean '{suggested}'? Rerun Cloud endpoints require the 'api.' prefix")
+            format!("Did you mean '{suggested}'? Rerun Hub endpoints require the 'api.' prefix")
         });
         // Truncate the body so we don't dump an entire HTML error page into the error.
         let body_snippet = std::str::from_utf8(&res.bytes)
