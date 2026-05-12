@@ -11,6 +11,7 @@ from __future__ import annotations
 import argparse
 import time
 from pathlib import Path
+from typing import cast
 
 import torch
 import torch.nn.functional as F
@@ -52,13 +53,17 @@ class CollateFn:
         self.state_dim = state_dim
 
     @with_tracing("CollateFn")
-    def __call__(self, samples: list[dict[str, torch.Tensor]]) -> dict[str, torch.Tensor]:
-        batch_size = len(samples)
+    def __call__(self, samples: list[dict[str, torch.Tensor | None]]) -> dict[str, torch.Tensor]:
+        # `VideoFrameDecoder` returns `None` when a target precedes the first keyframe; filter those out.
+        complete: list[dict[str, torch.Tensor]] = [
+            cast("dict[str, torch.Tensor]", s) for s in samples if all(s[f"image_{cam}"] is not None for cam in CAMERAS)
+        ]
+        batch_size = len(complete)
 
-        states = torch.stack([s["state"] for s in samples]).float()
+        states = torch.stack([s["state"] for s in complete]).float()
 
         # Future action chunks: reshape windowed flat tensors
-        actions = torch.stack([s["action"].reshape(self.chunk_size, self.state_dim) for s in samples]).float()
+        actions = torch.stack([s["action"].reshape(self.chunk_size, self.state_dim) for s in complete]).float()
 
         batch: dict[str, torch.Tensor] = {
             "observation.state": states,
@@ -67,7 +72,7 @@ class CollateFn:
         }
         # Per-camera images: (3, H, W) uint8 -> float in [0, 1], resized to (IMAGE_H, IMAGE_W)
         for cam, key in zip(CAMERAS, IMAGE_KEYS):
-            imgs = torch.stack([s[f"image_{cam}"] for s in samples]).float() / 255.0
+            imgs = torch.stack([s[f"image_{cam}"] for s in complete]).float() / 255.0
             batch[key] = F.interpolate(imgs, size=(IMAGE_H, IMAGE_W), mode="bilinear", align_corners=False)
         return batch
 
@@ -149,7 +154,9 @@ def main() -> None:
     print(f"Using {args.dataset_style} dataset with {len(ds)} samples (after window trimming)")
 
     # IterableDataset doesn't support indexing, so probe shape via iteration.
-    state_dim = next(iter(ds))["state"].shape[0]
+    state_tensor = next(iter(ds))["state"]
+    assert state_tensor is not None  # NumericDecoder never returns None
+    state_dim = state_tensor.shape[0]
     action_dim = state_dim
     print(f"Dimensions: {state_dim=}, {action_dim=}")
 

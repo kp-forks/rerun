@@ -16,7 +16,7 @@ if TYPE_CHECKING:
     from ._config import DataSource, Field
 
 
-class RerunMapDataset(torch.utils.data.Dataset[dict[str, torch.Tensor]]):
+class RerunMapDataset(torch.utils.data.Dataset[dict[str, torch.Tensor | None]]):
     """
     Map-style dataset backed by a catalog server.
 
@@ -94,12 +94,12 @@ class RerunMapDataset(torch.utils.data.Dataset[dict[str, torch.Tensor]]):
         """Total number of samples across all segments."""
         return self._sample_index.total_samples
 
-    def __getitem__(self, idx: int) -> dict[str, torch.Tensor]:  # ty: ignore[invalid-method-override]
+    def __getitem__(self, idx: int) -> dict[str, torch.Tensor | None]:  # ty: ignore[invalid-method-override]
         """Fetch a single sample by global index (one server query)."""
         return self.__getitems__([idx])[0]
 
     @with_tracing("RerunMapDataset.__getitems__")
-    def __getitems__(self, indices: list[int]) -> list[dict[str, torch.Tensor]]:
+    def __getitems__(self, indices: list[int]) -> list[dict[str, torch.Tensor | None]]:
         """
         Fetch multiple samples by global index in a single server query.
 

@@ -149,7 +149,7 @@ def _decode_iter(
     index: str,
     fields: dict[str, Field],
     decoders: dict[str, ColumnDecoder],
-) -> Iterator[dict[str, torch.Tensor]]:
+) -> Iterator[dict[str, torch.Tensor | None]]:
     """Yield decoded samples one at a time from a pre-fetched arrow chunk."""
     with tracing_scope("RerunDataset._decode_chunk"):
         for seg_meta, idx_val in targets:
@@ -157,7 +157,7 @@ def _decode_iter(
                 seg_table = seg_tables.get(seg_meta.segment_id)
                 if seg_table is None:
                     raise RuntimeError(f"No rows returned for segment {seg_meta.segment_id!r} at index {idx_val!r}")
-                sample: dict[str, torch.Tensor] = {}
+                sample: dict[str, torch.Tensor | None] = {}
                 index_array = seg_table[index]
                 for key, field in fields.items():
                     decoder = decoders[key]

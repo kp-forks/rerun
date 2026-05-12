@@ -23,7 +23,7 @@ if TYPE_CHECKING:
     from ._config import DataSource, Field
 
 
-class RerunIterableDataset(torch.utils.data.IterableDataset[dict[str, torch.Tensor]]):
+class RerunIterableDataset(torch.utils.data.IterableDataset[dict[str, torch.Tensor | None]]):
     """
     Iterable dataset backed by a catalog server.
 
@@ -102,7 +102,7 @@ class RerunIterableDataset(torch.utils.data.IterableDataset[dict[str, torch.Tens
         """Set the epoch for shuffling (like `DistributedSampler.set_epoch`)."""
         self._epoch = epoch
 
-    def __iter__(self) -> Iterator[dict[str, torch.Tensor]]:
+    def __iter__(self) -> Iterator[dict[str, torch.Tensor | None]]:
         """
         Yield individual samples as they are decoded.
 
