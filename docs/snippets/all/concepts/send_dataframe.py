@@ -6,7 +6,7 @@ import pyarrow as pa
 
 import rerun as rr
 
-rr.init("rerun_example_send_dataframe", spawn=True)
+rr.init("rerun_example_send_dataframe")
 
 # An index column…
 index = pa.array([0, 1, 2], type=pa.int64())

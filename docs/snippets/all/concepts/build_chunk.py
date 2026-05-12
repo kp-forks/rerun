@@ -5,7 +5,7 @@ from __future__ import annotations
 import rerun as rr
 import rerun.experimental as rrx
 
-rr.init("rerun_example_build_chunk", spawn=True)
+rr.init("rerun_example_build_chunk")
 
 chunk = rrx.Chunk.from_columns(
     "/points",
