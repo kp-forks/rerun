@@ -140,7 +140,9 @@ features = [
 backwards_check = [
   "archetypes/image_advanced", # Uses Pillow to encode a PNG; Pillow encodes differently on different OSes, so the bytes in the RRD won't match the checked-in reference.
   "archetypes/video_stream_synthetic", # Video encodes differently on CI :(
+  "concepts/build_chunk", # Python-only experimental API; no reference RRD checked in
   "concepts/explicit_recording", # The file path differs locally and on CI
+  "concepts/send_dataframe", # Python-only API; no reference RRD checked in
   "howto/convert_mcap_protobuf", # Processes video from MCAP, non-deterministic encoding
   "howto/convert_mcap_protobuf_send_column",
   # Catalog server examples don't generate rrds
@@ -177,6 +179,10 @@ backwards_check = [
   "cpp",
   "rust",
 ]
+"concepts/build_chunk" = [ # Python-only experimental API
+  "cpp",
+  "rust",
+]
 "concepts/explicit_recording" = [ # python-specific check
   "cpp",
   "rust",
@@ -190,6 +196,10 @@ backwards_check = [
   "py", # Requires context (an RRD file to be exported by the user)
   "cpp", # Not implemented for C++
   "rust", # Requires context (an RRD file to be exported by the user)
+]
+"concepts/send_dataframe" = [ # Python-only API
+  "cpp",
+  "rust",
 ]
 "concepts/static/log_static" = [ # pseudo-code
   "py",
