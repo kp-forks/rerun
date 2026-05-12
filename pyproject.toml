@@ -148,6 +148,8 @@ docs = [
   "mkdocs-redirects @ git+https://github.com/rerun-io/mkdocs-redirects.git@fb6b074554975ba7729d68d04957ce7c7dfd5003",
   "mkdocstrings==0.26.2",
   "mkdocstrings-python==1.12.1",
+  # pygments 2.20.0 breaks pymdownx.highlight (passes None to html.escape via filename option)
+  "pygments<2.20",
   "setuptools>75",
   "sphobjinv==2.3.1",
 ]
