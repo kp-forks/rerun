@@ -18,4 +18,4 @@ Conda always comes with support for all features but if using pip you may need t
 
 ## Next steps
 
-To start getting your own data streamed to the viewer, check out the [Python quick start guide](../../getting-started/data-in/python.md).
+[Set up a Python project](../../getting-started/project-setup/python.md), then walk through the [Log and Ingest](../../getting-started/data-in.md) tutorial.

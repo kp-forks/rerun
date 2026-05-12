@@ -9,4 +9,4 @@ You'll additionally need to install the [Viewer](./viewer.md).
 
 ## Next steps
 
-To start getting your own data streamed to the viewer, check out the [Rust quick start guide](../../getting-started/data-in/rust.md).
+[Set up a Rust project](../../getting-started/project-setup/rust.md), then walk through the [Log and Ingest](../../getting-started/data-in.md) tutorial.
