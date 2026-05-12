@@ -108,16 +108,18 @@ enum ColumnExtend {
 /// source arrays (deduplicated by chunk pointer), then replay them through
 /// `MutableArrayData` once the batch is fully sized. `Time` columns push i64
 /// values + a validity mask directly.
-///
-/// `source_bpr[i]` is the estimated bytes-per-row for `sources[i]`, computed
-/// as `get_array_memory_size() / len()` at registration time. Cheap (one
-/// division per distinct source per batch) and lets the walk amortize the byte
-/// budget without inspecting `MutableArrayData` until freeze.
 enum SelectedEmitter {
     Source {
         sources: Vec<ArrayData>,
-        source_ids: Vec<usize>,
-        source_bpr: Vec<usize>,
+
+        source_ids: Vec<*const Chunk>, // Used over `ChunkId` for speed.
+
+        /// `source_bytes_per_row[i]` is the estimated bytes-per-row for `sources[i]`, computed
+        /// as `get_array_memory_size() / len()` at registration time. Cheap (one
+        /// division per distinct source per batch) and lets the walk amortize the byte
+        /// budget without inspecting `MutableArrayData` until freeze.
+        source_bytes_per_row: Vec<usize>,
+
         extends: Vec<ColumnExtend>,
     },
     Time {
@@ -129,9 +131,9 @@ enum SelectedEmitter {
 impl SelectedEmitter {
     fn ensure_source(
         sources: &mut Vec<ArrayData>,
-        source_ids: &mut Vec<usize>,
-        source_bpr: &mut Vec<usize>,
-        id: usize,
+        source_ids: &mut Vec<*const Chunk>,
+        source_bytes_per_row: &mut Vec<usize>,
+        id: *const Chunk,
         data: impl FnOnce() -> ArrayData,
     ) -> usize {
         if let Some(idx) = source_ids.iter().position(|x| *x == id) {
@@ -142,7 +144,7 @@ impl SelectedEmitter {
             let bpr = d.get_array_memory_size().checked_div(d.len()).unwrap_or(0);
             sources.push(d);
             source_ids.push(id);
-            source_bpr.push(bpr);
+            source_bytes_per_row.push(bpr);
             idx
         }
     }
@@ -1605,7 +1607,7 @@ impl<E: StorageEngineLike> QueryHandle<E> {
                     SelectedEmitter::Source {
                         sources: Vec::new(),
                         source_ids: Vec::new(),
-                        source_bpr: Vec::new(),
+                        source_bytes_per_row: Vec::new(),
                         extends: Vec::with_capacity(cap_hint),
                     }
                 }
@@ -1643,7 +1645,7 @@ impl<E: StorageEngineLike> QueryHandle<E> {
                         let SelectedEmitter::Source {
                             sources,
                             source_ids,
-                            source_bpr,
+                            source_bytes_per_row,
                             extends,
                         } = &mut emitters[selected_idx]
                         else {
@@ -1659,12 +1661,12 @@ impl<E: StorageEngineLike> QueryHandle<E> {
                         {
                             // TODO(#9922): verify that using the row:ids from the first chunk
                             // always makes sense.
-                            let id = std::ptr::from_ref::<Chunk>(&cc.chunk) as usize;
+                            let id = std::ptr::from_ref::<Chunk>(&cc.chunk);
                             let pos = cs.cursor as usize;
                             let source_idx = SelectedEmitter::ensure_source(
                                 sources,
                                 source_ids,
-                                source_bpr,
+                                source_bytes_per_row,
                                 id,
                                 || cc.chunk.row_ids_array().to_data(),
                             );
@@ -1673,7 +1675,8 @@ impl<E: StorageEngineLike> QueryHandle<E> {
                                 source_idx,
                                 Span::from_start_len(pos, 1),
                             );
-                            total_bytes = total_bytes.saturating_add(source_bpr[source_idx]);
+                            total_bytes =
+                                total_bytes.saturating_add(source_bytes_per_row[source_idx]);
                         } else {
                             SelectedEmitter::push_nulls(extends, 1);
                         }
@@ -1700,7 +1703,7 @@ impl<E: StorageEngineLike> QueryHandle<E> {
                         let SelectedEmitter::Source {
                             sources,
                             source_ids,
-                            source_bpr,
+                            source_bytes_per_row,
                             extends,
                         } = &mut emitters[selected_idx]
                         else {
@@ -1718,11 +1721,11 @@ impl<E: StorageEngineLike> QueryHandle<E> {
                                     .next()
                                     .map(|la| la.to_data());
                                 if let Some(data) = list_array_data {
-                                    let id = std::ptr::from_ref::<Chunk>(s.chunk) as usize;
+                                    let id = std::ptr::from_ref::<Chunk>(s.chunk);
                                     let source_idx = SelectedEmitter::ensure_source(
                                         sources,
                                         source_ids,
-                                        source_bpr,
+                                        source_bytes_per_row,
                                         id,
                                         || data,
                                     );
@@ -1731,8 +1734,8 @@ impl<E: StorageEngineLike> QueryHandle<E> {
                                         source_idx,
                                         Span::from_start_len(s.cursor as usize, 1),
                                     );
-                                    total_bytes =
-                                        total_bytes.saturating_add(source_bpr[source_idx]);
+                                    total_bytes = total_bytes
+                                        .saturating_add(source_bytes_per_row[source_idx]);
                                 } else {
                                     SelectedEmitter::push_nulls(extends, 1);
                                 }
@@ -1760,11 +1763,11 @@ impl<E: StorageEngineLike> QueryHandle<E> {
                                 if let Some(data) = component_data {
                                     // UnitChunkShared derefs to Chunk; underlying address is
                                     // Arc-stable.
-                                    let id = std::ptr::from_ref::<Chunk>(&**unit) as usize;
+                                    let id = std::ptr::from_ref::<Chunk>(&**unit);
                                     let source_idx = SelectedEmitter::ensure_source(
                                         sources,
                                         source_ids,
-                                        source_bpr,
+                                        source_bytes_per_row,
                                         id,
                                         || data,
                                     );
@@ -1773,8 +1776,8 @@ impl<E: StorageEngineLike> QueryHandle<E> {
                                         source_idx,
                                         Span::from_start_len(0, 1),
                                     );
-                                    total_bytes =
-                                        total_bytes.saturating_add(source_bpr[source_idx]);
+                                    total_bytes = total_bytes
+                                        .saturating_add(source_bytes_per_row[source_idx]);
                                 } else {
                                     SelectedEmitter::push_nulls(extends, 1);
                                 }
@@ -1805,7 +1808,7 @@ impl<E: StorageEngineLike> QueryHandle<E> {
                     sources,
                     extends,
                     source_ids: _,
-                    source_bpr: _,
+                    source_bytes_per_row: _,
                 } => {
                     if sources.is_empty() {
                         columns.push(arrow::array::new_null_array(datatype, num_rows));
