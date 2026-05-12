@@ -362,7 +362,7 @@ before_gop: num_gops=1 num_chunks=17
 after_gop: num_gops=1 num_chunks=4
 /__properties rows=1 static=True timelines=[] cols=['RecordingInfo:start_time']
 /video rows=1 static=True timelines=[] cols=['VideoStream:codec']
-/video rows=1 static=False timelines=['video_time'] cols=['KeyframeData:is_keyframe', 'video_time']
+/video rows=1 static=False timelines=['video_time'] cols=['VideoStream:is_keyframe', 'video_time']
 /video rows=300 static=False timelines=['video_time'] cols=['VideoStream:sample', 'video_time']
 
 
@@ -382,7 +382,7 @@ before_gop: num_gops=1 num_chunks=11
 after_gop: num_gops=1 num_chunks=4
 /__properties rows=1 static=True timelines=[] cols=['RecordingInfo:start_time']
 /video rows=1 static=True timelines=[] cols=['VideoStream:codec']
-/video rows=1 static=False timelines=['video_time'] cols=['KeyframeData:is_keyframe', 'video_time']
+/video rows=1 static=False timelines=['video_time'] cols=['VideoStream:is_keyframe', 'video_time']
 /video rows=30 static=False timelines=['video_time'] cols=['VideoStream:sample', 'video_time']
 
 
@@ -396,7 +396,7 @@ before_gop: num_gops=12 num_chunks=5
 after_gop: num_gops=12 num_chunks=7
 /__properties rows=1 static=True timelines=[] cols=['RecordingInfo:start_time']
 /video rows=1 static=True timelines=[] cols=['VideoStream:codec']
-/video rows=12 static=False timelines=['video_time'] cols=['KeyframeData:is_keyframe', 'video_time']
+/video rows=12 static=False timelines=['video_time'] cols=['VideoStream:is_keyframe', 'video_time']
 /video rows=39 static=False timelines=['video_time'] cols=['VideoStream:sample', 'video_time']
 /video rows=107 static=False timelines=['video_time'] cols=['VideoStream:sample', 'video_time']
 /video rows=68 static=False timelines=['video_time'] cols=['VideoStream:sample', 'video_time']

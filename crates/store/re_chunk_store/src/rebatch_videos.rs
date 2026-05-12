@@ -12,18 +12,8 @@ use re_format::format_bytes;
 use re_log_types::TimeInt;
 use re_sdk_types::archetypes::VideoStream;
 use re_sdk_types::components::{VideoCodec, VideoSample};
-use re_types_core::ComponentDescriptor;
 
 use crate::{ChunkStore, ChunkStoreConfig, ChunkTrackingMode};
-
-// TODO(RR-4353): make official component (.fbs file + codegen)
-fn keyframe_descriptor() -> ComponentDescriptor {
-    ComponentDescriptor {
-        archetype: Some("KeyframeData".into()),
-        component: "KeyframeData:is_keyframe".into(),
-        component_type: None,
-    }
-}
 
 /// Info about a single video sample (frame) in the index.
 #[derive(Clone, Copy)]
@@ -61,7 +51,7 @@ pub fn rebatch_video_chunks_to_gops(
     re_tracing::profile_function!();
 
     let sample_component = VideoStream::descriptor_sample().component;
-    let keyframe_component = keyframe_descriptor().component;
+    let keyframe_component = VideoStream::descriptor_is_keyframe().component;
 
     // Collect all temporal chunks that contain video samples, grouped by entity.
     let mut sample_chunks_per_entity: HashMap<EntityPath, HashMap<ChunkId, ChunkShared>> =
@@ -236,9 +226,9 @@ fn rebatch_video_entity(
 
 /// Build a sparse `is_keyframe` marker chunk for this entity.
 ///
-/// Emits one row per keyframe sample, all with value `true`, on the descriptor
-/// returned by [`keyframe_descriptor`]. Returns `None` if no sample in
-/// `sample_index` was detected as a keyframe.
+/// Emits one row per keyframe sample, all with value `true`, on the
+/// [`VideoStream::descriptor_is_keyframe`] descriptor. Returns `None` if no
+/// sample in `sample_index` was detected as a keyframe.
 fn build_keyframe_chunk(
     entity_path: &EntityPath,
     timeline: Timeline,
@@ -270,7 +260,7 @@ fn build_keyframe_chunk(
     let chunk = Chunk::from_columns(
         entity_path.clone(),
         [time_column],
-        [(keyframe_descriptor(), list_array)],
+        [(VideoStream::descriptor_is_keyframe(), list_array)],
     )
     .map_err(|err| anyhow::anyhow!("failed to build keyframe chunk: {err}"))?;
 

@@ -171,7 +171,7 @@ fn keyframe_markers_share_store_but_not_chunks() {
     let mut kf_rows = 0u64;
     let mut saw_sample_chunk = false;
     for chunk in compacted.iter_physical_chunks() {
-        let has_kf = chunk_has_component(chunk, "KeyframeData:is_keyframe");
+        let has_kf = chunk_has_component(chunk, "VideoStream:is_keyframe");
         let has_sample = chunk_has_component(chunk, "VideoStream:sample");
 
         // Load-bearing invariant: keyframe markers and VideoSample never co-locate.
@@ -204,7 +204,7 @@ fn keyframe_markers_share_store_but_not_chunks() {
 }
 
 /// Re-running optimize on an already-optimized store must not duplicate
-/// keyframe markers. Optimize owns the `KeyframeData:is_keyframe` descriptor
+/// keyframe markers. Optimize owns the `VideoStream:is_keyframe` descriptor
 /// and re-derives it on every pass.
 #[test]
 fn keyframe_markers_are_idempotent_across_optimize_runs() {
@@ -214,7 +214,7 @@ fn keyframe_markers_are_idempotent_across_optimize_runs() {
     let count_keyframe_rows = |store: &ChunkStore| -> u64 {
         store
             .iter_physical_chunks()
-            .filter(|c| chunk_has_component(c, "KeyframeData:is_keyframe"))
+            .filter(|c| chunk_has_component(c, "VideoStream:is_keyframe"))
             .map(|c| c.num_rows() as u64)
             .sum()
     };
