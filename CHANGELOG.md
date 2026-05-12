@@ -11,16 +11,18 @@
 
 #### Python chunk processing API
 
-This release introduces an experimental chunk processing API to execute flexible data ingestion and transformation pipelines.
+This release introduces a chunk processing API designed for systematic and efficient wrangling of robotics data.
 It includes:
-- Readers for common file formats (RRD, MCAP, Parquet, and URDF—with more to come) which stream chunks.
+- A `Chunk` object for inspecting, creating, and manipulating chunks.
+- Readers for common file formats (RRD, MCAP, Parquet, URDF, and more to come) which output streams of chunks.
 - A composable `LazyChunkStream` class to define memory-bounded chunk-based filtering and transformation pipelines.
 - Lenses: an expressive and performant API to manipulate component data in chunks.
+- A multithreaded, GIL-free, native engine for pipeline execution that is designed for distributed execution in the future.
 - Interoperability with a catalog server and the Rerun SDK logging API.
 
-The chunk processing API includes a multithreaded, GIL-free, native engine, and its design allows for distributed execution in the future.
+In addition to enabling powerful data wrangling pipelines, the chunk processing API is significant for offering read/write chunk-level control of RRD files down to the raw Arrow data.
 
-_Note_: this API is experimental and subject to rapid breaking changes until stabilization.
+_Note_: this API is experimental and subject to breaking changes as we continue to improve it.
 
 #### Experimental dataset review
 You can now build tables of recording previews configured with arbitrary blueprints!
