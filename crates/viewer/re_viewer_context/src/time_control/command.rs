@@ -1,5 +1,5 @@
 use re_chunk::TimelineName;
-use re_log_types::{AbsoluteTimeRange, TimeReal, TimeType};
+use re_log_types::{AbsoluteTimeRange, AbsoluteTimeRangeF, TimeReal, TimeType};
 use re_sdk_types::blueprint::components::{LoopMode, PlayState};
 
 use crate::NeedsRepaint;
@@ -313,8 +313,20 @@ impl TimeControl {
                 }
             }
             TimeControlCommand::SetTimeSelection(time_range) => {
+                let timeline_range = db
+                    .time_range_for(self.timeline_name())
+                    .unwrap_or(AbsoluteTimeRange::EVERYTHING);
+
+                let Some(time_range) = timeline_range.intersection(*time_range) else {
+                    return self.handle_time_command(
+                        blueprint_ctx,
+                        db,
+                        &TimeControlCommand::RemoveTimeSelection,
+                    );
+                };
+
                 if let Some(blueprint_ctx) = blueprint_ctx {
-                    blueprint_ctx.set_time_selection(*time_range);
+                    blueprint_ctx.set_time_selection(time_range);
                 }
 
                 let state = self
@@ -322,9 +334,9 @@ impl TimeControl {
                     .entry(*self.timeline_name())
                     .or_insert_with(|| TimeState::new(time_range.min));
 
-                let repaint = state.time_selection.map(|r| r.to_int()) != Some(*time_range);
+                let repaint = state.time_selection.map(|r| r.to_int()) != Some(time_range);
 
-                state.time_selection = Some((*time_range).into());
+                state.time_selection = Some((time_range).into());
 
                 if repaint {
                     NeedsRepaint::Yes
@@ -352,13 +364,27 @@ impl TimeControl {
                 }
             }
             TimeControlCommand::SetTime(time) => {
-                let time_int = time.floor();
+                let timeline_range = db
+                    .time_range_for(self.timeline_name())
+                    .unwrap_or(AbsoluteTimeRange::EVERYTHING);
+
+                // If the floating point time is inside the range, use that.
+                let timeline_rangef = AbsoluteTimeRangeF::from(timeline_range);
+                let clamped_time = if timeline_rangef.contains(*time) {
+                    *time
+                } else {
+                    (*time).clamp(timeline_rangef.min, timeline_rangef.max)
+                };
+
+                let time_int = clamped_time.floor();
+
                 let repaint = self.time_int() != Some(time_int);
+
                 let state = self
                     .states
                     .entry(*self.timeline_name())
-                    .or_insert_with(|| TimeState::new(*time));
-                state.time = *time;
+                    .or_insert_with(|| TimeState::new(clamped_time));
+                state.time = clamped_time;
 
                 self.exit_follow_mode(db, blueprint_ctx);
                 self.start_buffering();

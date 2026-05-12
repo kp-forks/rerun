@@ -11,7 +11,8 @@ use re_data_ui::DataUi as _;
 use re_entity_db::InstancePath;
 use re_entity_db::entity_db::RedapConnectionState;
 use re_log_types::{
-    AbsoluteTimeRange, ApplicationId, ComponentPath, EntityPath, TimeInt, TimeReal,
+    AbsoluteTimeRange, AbsoluteTimeRangeF, ApplicationId, ComponentPath, EntityPath, TimeInt,
+    TimeReal,
 };
 use re_sdk_types::ComponentIdentifier;
 use re_sdk_types::blueprint::components::PanelState;
@@ -638,7 +639,7 @@ impl TimePanel {
         );
         time_selection_ui::loop_selection_ui(
             viewer_ctx,
-            store_ctx.time_ctrl,
+            store_ctx,
             &self.time_ranges_ui,
             ui,
             &time_bg_area_painter,
@@ -2075,6 +2076,13 @@ impl TimePanel {
             self.time_ranges_ui.snapped_time_from_x(ui, pointer_pos.x)
         });
 
+        let timeline_range = AbsoluteTimeRangeF::from(
+            store_ctx
+                .db
+                .time_range_for(time_ctrl.timeline_name())
+                .unwrap_or(AbsoluteTimeRange::EVERYTHING),
+        );
+
         // Press to move time:
         if ui.input(|i| i.pointer.primary_pressed() || i.pointer.primary_down() || i.pointer.primary_released())
             // `interact_pointer_pos` is set as soon as the mouse button is down on it,
@@ -2082,7 +2090,9 @@ impl TimePanel {
             && response.interact_pointer_pos().is_some()
             && let Some(time) = hovered_time
         {
-            time_commands.push(TimeControlCommand::SetTime(time));
+            time_commands.push(TimeControlCommand::SetTime(
+                time.clamp(timeline_range.min, timeline_range.max),
+            ));
         }
 
         // Show hover preview, and right-click context menu:
