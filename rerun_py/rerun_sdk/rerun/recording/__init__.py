@@ -14,6 +14,8 @@ from ._recording import Recording as Recording, RRDArchive as RRDArchive  # ty:i
 if TYPE_CHECKING:
     from pathlib import Path
 
+__all__ = ["RRDArchive", "Recording", "load_archive", "load_recording"]
+
 
 @deprecated(
     "load_recording is deprecated since 0.32. Use rerun.experimental.RrdReader(path).store() instead.",
