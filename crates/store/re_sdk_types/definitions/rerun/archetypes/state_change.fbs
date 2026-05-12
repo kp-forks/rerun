@@ -8,7 +8,7 @@ namespace rerun.archetypes;
 ///
 /// The state timeline view displays these as horizontal colored lanes over time.
 ///
-/// \example archetypes/state_change title="State changes over time" image="https://static.rerun.io/status/8f224c6e4a9cbbb4b1e279c56a426ec4c6bfca50/1200w.png"
+/// \example archetypes/state_change title="State changes over time" image="https://static.rerun.io/state_change/6654a13e984702b96547750469c368ce6e900c0f/1200w.png"
 table StateChange (
   "attr.docs.category": "Plotting",
   "attr.docs.unreleased",

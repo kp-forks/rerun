@@ -44,6 +44,12 @@ Limitations, or why this is still experimental:
 
 A new experimental view for visualizing discrete state transitions over time as horizontal colored lanes, useful for state machines, mode transitions, and similar discrete signals. Log state changes with the new `StateChange` archetype; configure their display on the UI or using `StateConfiguration` in the blueprint API.
 
+<picture>
+  <img src="https://static.rerun.io/state_timeline/3f821055b73ffda964dbd2573c0279f99cee02a8/full.png" alt="State timeline view">
+</picture>
+
+Read [our guide](https://rerun.io/docs/howto/visualization/state-timeline?speculative-link) to get started. Feedback is appreciated!
+
 #### `GridMap` archetype and MCAP support for ROS occupancy grids
 
 Rerun now supports 2D grid maps, as used e.g. in robot mapping & navigation applications, through a new `GridMap` archetype.

@@ -190,9 +190,6 @@ pub struct VideoOptions {
 #[derive(Debug, Default, PartialEq, Eq, serde::Deserialize, serde::Serialize)]
 #[serde(default)]
 pub struct ExperimentalAppOptions {
-    /// Enable the experimental state timeline view.
-    pub enable_state_timeline_view: bool,
-
     /// Enable table cards and blueprints.
     ///
     /// This enables table blueprints embedded in Arrow schema metadata,

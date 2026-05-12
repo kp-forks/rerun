@@ -33,10 +33,10 @@ The state timeline view displays these as horizontal colored lanes over time.
 snippet: archetypes/state_change
 
 <picture data-inline-viewer="snippets/archetypes/state_change">
-  <source media="(max-width: 480px)" srcset="https://static.rerun.io/status/8f224c6e4a9cbbb4b1e279c56a426ec4c6bfca50/480w.png">
-  <source media="(max-width: 768px)" srcset="https://static.rerun.io/status/8f224c6e4a9cbbb4b1e279c56a426ec4c6bfca50/768w.png">
-  <source media="(max-width: 1024px)" srcset="https://static.rerun.io/status/8f224c6e4a9cbbb4b1e279c56a426ec4c6bfca50/1024w.png">
-  <source media="(max-width: 1200px)" srcset="https://static.rerun.io/status/8f224c6e4a9cbbb4b1e279c56a426ec4c6bfca50/1200w.png">
-  <img src="https://static.rerun.io/status/8f224c6e4a9cbbb4b1e279c56a426ec4c6bfca50/full.png">
+  <source media="(max-width: 480px)" srcset="https://static.rerun.io/state_change/6654a13e984702b96547750469c368ce6e900c0f/480w.png">
+  <source media="(max-width: 768px)" srcset="https://static.rerun.io/state_change/6654a13e984702b96547750469c368ce6e900c0f/768w.png">
+  <source media="(max-width: 1024px)" srcset="https://static.rerun.io/state_change/6654a13e984702b96547750469c368ce6e900c0f/1024w.png">
+  <source media="(max-width: 1200px)" srcset="https://static.rerun.io/state_change/6654a13e984702b96547750469c368ce6e900c0f/1200w.png">
+  <img src="https://static.rerun.io/state_change/6654a13e984702b96547750469c368ce6e900c0f/full.png">
 </picture>
 

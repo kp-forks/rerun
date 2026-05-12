@@ -158,18 +158,10 @@ fn settings_screen_ui_impl(ui: &mut egui::Ui, app_options: &mut AppOptions, keep
 
     {
         let ExperimentalAppOptions {
-            enable_state_timeline_view,
             table_cards_and_blueprints,
         } = experimental;
         separator_with_some_space(ui);
         ui.strong("Experimental");
-        ui.re_checkbox(
-            enable_state_timeline_view,
-            "Enable State timeline view (requires restart)",
-        )
-        .on_hover_text(
-            "Show the experimental state timeline view for visualizing state transitions over time.",
-        );
         ui.re_checkbox(table_cards_and_blueprints, "Table cards and blueprints")
             .on_hover_text(
                 "Enable table blueprints embedded in Arrow schema metadata, plus grid view mode for server supplied tables.\n\n\

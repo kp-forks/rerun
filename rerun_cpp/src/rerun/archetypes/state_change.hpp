@@ -26,7 +26,7 @@ namespace rerun::archetypes {
     /// ## Example
     ///
     /// ### State changes over time
-    /// ![image](https://static.rerun.io/status/8f224c6e4a9cbbb4b1e279c56a426ec4c6bfca50/full.png)
+    /// ![image](https://static.rerun.io/state_change/6654a13e984702b96547750469c368ce6e900c0f/full.png)
     ///
     /// ```cpp
     /// #include <rerun.hpp>

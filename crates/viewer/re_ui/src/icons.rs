@@ -180,6 +180,7 @@ pub const VIEW_GENERIC: Icon = icon_from_path!("../data/icons/view_generic.svg")
 pub const VIEW_HISTOGRAM: Icon = icon_from_path!("../data/icons/view_histogram.svg");
 pub const VIEW_LOG: Icon = icon_from_path!("../data/icons/view_log.svg");
 pub const VIEW_MAP: Icon = icon_from_path!("../data/icons/view_map.svg");
+pub const VIEW_STATE_TIMELINE: Icon = icon_from_path!("../data/icons/view_state_timeline.svg");
 pub const VIEW_TENSOR: Icon = icon_from_path!("../data/icons/view_tensor.svg");
 pub const VIEW_TEXT: Icon = icon_from_path!("../data/icons/view_text.svg");
 pub const VIEW_TIMESERIES: Icon = icon_from_path!("../data/icons/view_timeseries.svg");
