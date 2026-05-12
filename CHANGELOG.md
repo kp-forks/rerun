@@ -4,9 +4,6 @@
 
 🧳 Migration guide: https://rerun.io/docs/reference/migration/migration-0-32?speculative-link
 
-### ⚠️ Breaking changes
-- `rerun rrd compact` renamed to `rerun rrd optimize`
-
 ### ✨ Overview & highlights
 
 #### Python chunk processing API
@@ -133,6 +130,16 @@ See the new [LeRobot ACT training example](https://github.com/rerun-io/rerun/tre
 
 Expect breaking changes between releases while we iterate on the design. For large-scale training, Rerun Hub offers a higher-performance backend.
 
+#### Docs feedback on the website.
+
+As a part of our [website](https://rerun.io/) update, we've also added a feedback form to all our documentation pages. So you can add your feedback directly to the respective topic.
+
+<picture>
+  <img src="https://static.rerun.io/feedback-form/e96b0889824e4bc0cf42039bead0612953e54a87/full.png" alt="feedback form">
+  <source media="(max-width: 480px)" srcset="https://static.rerun.io/feedback-form/e96b0889824e4bc0cf42039bead0612953e54a87/480w.png">
+  <source media="(max-width: 768px)" srcset="https://static.rerun.io/feedback-form/e96b0889824e4bc0cf42039bead0612953e54a87/768w.png">
+</picture>
+
 ### ⚠️ Breaking changes
 
 * "Data loaders" renamed to "importers" to avoid confusion with the widely-used ML/PyTorch "dataloader" concept
@@ -143,7 +150,6 @@ Expect breaking changes between releases while we iterate on the design. For lar
 * MCAP metadata and statistics are now saved to `__mcap_metadata`
 
 🧳 Full Migration guide: https://rerun.io/docs/reference/migration/migration-0-32?speculative-link
-
 
 ### 🔎 Details
 
