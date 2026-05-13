@@ -1,4 +1,4 @@
-"""Hand-craft a PyArrow `Table` with Rerun schema metadata and send it via `send_dataframe`."""
+"""Hand-craft a PyArrow `Table` and send it via `send_dataframe`."""
 
 from __future__ import annotations
 
@@ -21,7 +21,8 @@ positions = pa.array(
     type=pa.list_(pa.list_(pa.field("item", pa.float32(), nullable=False), 3)),
 )
 
-# Tag each column with the `rerun:*` metadata keys that `send_dataframe` recognizes.
+# Tag each column with the `rerun:*` metadata keys that `send_dataframe`
+# recognizes.
 schema = pa.schema([
     pa.field(
         "frame",

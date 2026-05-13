@@ -40,8 +40,8 @@ class GridMap(Archetype):
     width, height = 64, 64
     cell_size = 0.1
 
-    # Create a synthetic image with ROS `nav_msgs/OccupancyGrid` cell value conventions:
-    # -1 (255) unknown, 0 free, 100 occupied.
+    # Create a synthetic image with ROS `nav_msgs/OccupancyGrid` cell value
+    # conventions: -1 (255) unknown, 0 free, 100 occupied.
     grid = np.full((height, width), -1, dtype=np.int8)
     grid[8:56, 8:56] = 0
     grid[20:44, 20:44] = 100
@@ -59,7 +59,11 @@ class GridMap(Archetype):
                 channel_datatype="U8",
             ),
             cell_size=cell_size,
-            translation=[-(width * cell_size) / 2.0, -(height * cell_size) / 2.0, 0.0],
+            translation=[
+                -(width * cell_size) / 2.0,
+                -(height * cell_size) / 2.0,
+                0.0,
+            ],
             colormap=rr.components.Colormap.RvizMap,
         ),
     )
@@ -83,7 +87,9 @@ class GridMap(Archetype):
         "/tf",
         rr.Transform3D(
             translation=[1.0, 2.0, 0.0],
-            rotation_axis_angle=rr.components.RotationAxisAngle([0, 0, 1], -math.pi / 3),
+            rotation_axis_angle=rr.components.RotationAxisAngle(
+                [0, 0, 1], -math.pi / 3
+            ),
             parent_frame="world",
             child_frame="map",
         ),
@@ -108,10 +114,12 @@ class GridMap(Archetype):
             opacity=0.5,
             # The size of a pixel in scene units.
             cell_size=0.01,
-            # Specify the pose of the lower-left image corner relative to the map frame,
-            # in scene units.
+            # Specify the pose of the lower-left image corner relative to the
+            # map frame, in scene units.
             translation=[1.1, -1.6, 0.0],
-            rotation_axis_angle=rr.components.RotationAxisAngle([0, 0, 1], math.pi / 4.0),
+            rotation_axis_angle=rr.components.RotationAxisAngle(
+                [0, 0, 1], math.pi / 4.0
+            ),
         ),
     )
 

@@ -7,8 +7,10 @@ import rerun.experimental as rrx
 
 path_to_rrd = sys.argv[1]
 
-# NOTE: This is specifically demonstrating how to forward chunks from an RRD into the viewer.
-# If you just want to view an RRD file, use the simpler `rr.log_file()` function instead:
+# NOTE: This is specifically demonstrating how to forward chunks from an RRD
+# into the viewer.
+# If you just want to view an RRD file, use the simpler `rr.log_file()`
+# function instead:
 #   rr.log_file("path/to/file.rrd", spawn=True)
 
 reader = rrx.RrdReader(path_to_rrd)

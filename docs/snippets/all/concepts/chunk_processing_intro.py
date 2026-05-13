@@ -4,7 +4,13 @@ from __future__ import annotations
 
 from pathlib import Path
 
-mcap_path = Path(__file__).resolve().parents[4] / "tests" / "assets" / "mcap" / "trossen_transfer_cube.mcap"
+mcap_path = (
+    Path(__file__).resolve().parents[4]
+    / "tests"
+    / "assets"
+    / "mcap"
+    / "trossen_transfer_cube.mcap"
+)
 output_path = Path("chunk_processing_intro.rrd")
 
 # region: read

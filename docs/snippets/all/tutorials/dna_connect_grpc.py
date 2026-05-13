@@ -1,4 +1,4 @@
-"""The DNA-abacus example, connecting to a separately-running viewer over gRPC."""
+"""DNA-abacus example, connecting to a separately-running viewer over gRPC."""
 
 import rerun as rr
 

@@ -50,7 +50,8 @@ class StateConfiguration(Archetype, VisualizableArchetype):
     -------
     ### State changes with a custom style:
     ```python
-    # Log a `StateChange` together with a `StateConfiguration` that customizes its display.
+    # Log a `StateChange` together with a `StateConfiguration` that customizes
+    # its display.
 
     import rerun as rr
 

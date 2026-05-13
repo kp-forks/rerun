@@ -1,6 +1,4 @@
-"""
-Demonstrates the experimental state timeline view: logging state changes, customizing display, and building a blueprint.
-"""
+"""Demonstrates the experimental state timeline view."""
 
 import rerun as rr
 import rerun.blueprint as rrb
@@ -22,9 +20,10 @@ rr.log(
 # endregion: state_config
 
 # region: log_changes
-# Log state transitions for two entities. Each call marks the start of a new state;
-# the previous state implicitly ends. The `/door` lane uses the `StateConfiguration`
-# above, while `/window` gets default styling (raw value as label, hashed color).
+# Log state transitions for two entities. Each call marks the start of a new
+# state; the previous state implicitly ends. The `/door` lane uses the
+# `StateConfiguration` above, while `/window` gets default styling (raw value
+# as label, hashed color).
 rr.set_time("step", sequence=0)
 rr.log("door", rr.StateChange(state="open"))
 rr.log("window", rr.StateChange(state="closed"))
@@ -40,9 +39,9 @@ rr.log("door", rr.StateChange(state="open"))
 # endregion: log_changes
 
 # region: blueprint
-# Place a state timeline view at the root. The viewer will create one automatically
-# as soon as it sees `StateChange` data, but the blueprint API lets you control the
-# origin, name, and layout explicitly.
+# Place a state timeline view at the root. The viewer will create one
+# automatically as soon as it sees `StateChange` data, but the blueprint API
+# lets you control the origin, name, and layout explicitly.
 blueprint = rrb.Blueprint(
     rrb.StateTimelineView(origin="/", name="Doors and windows"),
 )

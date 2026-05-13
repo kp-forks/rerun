@@ -16,7 +16,9 @@ rr.log(
     "/tf",
     rr.Transform3D(
         translation=[1.0, 2.0, 0.0],
-        rotation_axis_angle=rr.components.RotationAxisAngle([0, 0, 1], -math.pi / 3),
+        rotation_axis_angle=rr.components.RotationAxisAngle(
+            [0, 0, 1], -math.pi / 3
+        ),
         parent_frame="world",
         child_frame="map",
     ),
@@ -41,10 +43,12 @@ rr.log(
         opacity=0.5,
         # The size of a pixel in scene units.
         cell_size=0.01,
-        # Specify the pose of the lower-left image corner relative to the map frame,
-        # in scene units.
+        # Specify the pose of the lower-left image corner relative to the
+        # map frame, in scene units.
         translation=[1.1, -1.6, 0.0],
-        rotation_axis_angle=rr.components.RotationAxisAngle([0, 0, 1], math.pi / 4.0),
+        rotation_axis_angle=rr.components.RotationAxisAngle(
+            [0, 0, 1], math.pi / 4.0
+        ),
     ),
 )
 

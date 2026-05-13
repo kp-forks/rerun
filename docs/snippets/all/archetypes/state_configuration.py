@@ -1,4 +1,5 @@
-# Log a `StateChange` together with a `StateConfiguration` that customizes its display.
+# Log a `StateChange` together with a `StateConfiguration` that customizes
+# its display.
 
 import rerun as rr
 

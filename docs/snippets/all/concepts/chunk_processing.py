@@ -10,9 +10,21 @@ import pyarrow as pa
 import pyarrow.compute as pc
 
 import rerun as rr
-from rerun.experimental import Chunk, DeriveLens, LazyChunkStream, McapReader, Selector
+from rerun.experimental import (
+    Chunk,
+    DeriveLens,
+    LazyChunkStream,
+    McapReader,
+    Selector,
+)
 
-MCAP = Path(__file__).resolve().parents[4] / "tests" / "assets" / "mcap" / "trossen_transfer_cube.mcap"
+MCAP = (
+    Path(__file__).resolve().parents[4]
+    / "tests"
+    / "assets"
+    / "mcap"
+    / "trossen_transfer_cube.mcap"
+)
 OUT = Path("chunk_processing.rrd")
 # endregion: setup
 
@@ -23,7 +35,14 @@ stream = McapReader(MCAP).stream()
 
 
 # region: processing
-JOINTS = ["waist", "shoulder", "elbow", "forearm_roll", "wrist_angle", "wrist_rotate"]
+JOINTS = [
+    "waist",
+    "shoulder",
+    "elbow",
+    "forearm_roll",
+    "wrist_angle",
+    "wrist_rotate",
+]
 
 
 def pick_joint(i: int) -> Callable[[pa.Array], pa.Array]:
@@ -47,23 +66,39 @@ def fan(side: str) -> list[DeriveLens]:
 processed = (
     stream
     .drop(content="/video_raw/**")
-    .lenses(fan("left"), content="/robot_left/**", output_mode="forward_unmatched")
-    .lenses(fan("right"), content="/robot_right/**", output_mode="forward_unmatched")
+    .lenses(
+        fan("left"),
+        content="/robot_left/**",
+        output_mode="forward_unmatched",
+    )
+    .lenses(
+        fan("right"),
+        content="/robot_right/**",
+        output_mode="forward_unmatched",
+    )
 )
 # endregion: processing
 
-# TODO(ab): change this to merge properties instead, when we have proper interop between logging SDK and py-chunk
+# TODO(ab): change this to merge properties instead, when we have proper
+# interop between logging SDK and py-chunk
 
 # region: merging
 metadata = Chunk.from_columns(
     "/metadata",
     indexes=[],
-    columns=rr.AnyValues.columns(processing_type="ingestion", processing_version="v1"),
+    columns=rr.AnyValues.columns(
+        processing_type="ingestion",
+        processing_version="v1",
+    ),
 )
 merged = LazyChunkStream.merge(processed, LazyChunkStream.from_iter([metadata]))
 # endregion: merging
 
 
 # region: write
-merged.write_rrd(OUT, application_id="rerun_example_chunk_processing", recording_id=str(uuid.uuid4()))
+merged.write_rrd(
+    OUT,
+    application_id="rerun_example_chunk_processing",
+    recording_id=str(uuid.uuid4()),
+)
 # endregion: write

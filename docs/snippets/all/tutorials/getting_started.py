@@ -10,8 +10,11 @@ from pathlib import Path
 import rerun as rr
 
 # Materialize the .rrd that the catalog regions below register against.
-# Same code as the Log step's three-language snippet, repeated here so this file runs end-to-end.
-with rr.RecordingStream("rerun_example_getting_started", recording_id="run-1") as _rec:
+# Same code as the Log step's three-language snippet, repeated here so this
+# file runs end-to-end.
+with rr.RecordingStream(
+    "rerun_example_getting_started", recording_id="run-1"
+) as _rec:
     _rec.save("run-1.rrd")
     for _t in range(10):
         _rec.set_time("t", duration=_t)
@@ -31,15 +34,27 @@ dataset.register([Path("run-1.rrd").absolute().as_uri()]).wait()
 
 
 # region: annotate
-with rr.RecordingStream("rerun_example_getting_started", recording_id="run-1") as ann:
+with rr.RecordingStream(
+    "rerun_example_getting_started", recording_id="run-1"
+) as ann:
     ann.save("run-1-properties.rrd")
-    ann.send_property("episode", rr.AnyValues(success=True, task="pick_and_place"))
+    ann.send_property(
+        "episode", rr.AnyValues(success=True, task="pick_and_place")
+    )
 
-dataset.register([Path("run-1-properties.rrd").absolute().as_uri()], layer_name="properties").wait()
+dataset.register(
+    [Path("run-1-properties.rrd").absolute().as_uri()], layer_name="properties"
+).wait()
 # endregion: annotate
 
 
 # region: query
 df = dataset.filter_contents(["/arm/**"]).reader(index="t")
-print(df.select("rerun_segment_id", "/arm/shoulder:Scalars:scalars", "/arm/elbow:Scalars:scalars"))
+print(
+    df.select(
+        "rerun_segment_id",
+        "/arm/shoulder:Scalars:scalars",
+        "/arm/elbow:Scalars:scalars",
+    )
+)
 # endregion: query

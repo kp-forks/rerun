@@ -1,4 +1,4 @@
-"""Build a `Chunk` explicitly with `Chunk.from_columns` and send it via `send_chunks`."""
+"""Build a `Chunk` with `Chunk.from_columns` and send it via `send_chunks`."""
 
 from __future__ import annotations
 
@@ -16,7 +16,8 @@ chunk = rrx.Chunk.from_columns(
     ),
 )
 
-# Chunks can be inspected in many ways, including a text representation of its content
+# Chunks can be inspected in many ways, including a text representation of
+# its content
 print(chunk)
 
 rrx.send_chunks(chunk)
