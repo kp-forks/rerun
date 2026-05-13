@@ -53,7 +53,6 @@ exclude_path = [
   ".pixi",
   "build",
   "docs/python/",
-  "landing",
   "rerun_cpp/_deps",
   "rerun_cpp/docs/html",
   "rerun_cpp/docs/xml",
