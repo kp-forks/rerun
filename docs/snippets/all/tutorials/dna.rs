@@ -13,7 +13,8 @@ use rerun::{
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     // region: init
-    let rec = rerun::RecordingStreamBuilder::new("rerun_example_dna_abacus").spawn()?;
+    let rec = rerun::RecordingStreamBuilder::new("rerun_example_dna_abacus")
+        .spawn()?;
     // endregion: init
 
     // The fix for the latest-at lesson — see "Latest-at semantics" in the tutorial.
@@ -25,7 +26,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // region: first_points
     let (points1, colors1) = color_spiral(NUM_POINTS, 2.0, 0.02, 0.0, 0.1);
-    let (points2, colors2) = color_spiral(NUM_POINTS, 2.0, 0.02, TAU * 0.5, 0.1);
+    let (points2, colors2) =
+        color_spiral(NUM_POINTS, 2.0, 0.02, TAU * 0.5, 0.1);
 
     rec.log(
         "dna/structure/left",
@@ -113,10 +115,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
         rec.log(
             "dna/structure",
-            &rerun::archetypes::Transform3D::from_rotation(rerun::RotationAxisAngle::new(
-                glam::Vec3::Z,
-                rerun::Angle::from_radians(time / 4.0 * TAU),
-            )),
+            &rerun::archetypes::Transform3D::from_rotation(
+                rerun::RotationAxisAngle::new(
+                    glam::Vec3::Z,
+                    rerun::Angle::from_radians(time / 4.0 * TAU),
+                ),
+            ),
         )?;
     }
     // endregion: transform_loop

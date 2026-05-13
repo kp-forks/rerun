@@ -30,7 +30,8 @@ use ::re_types_core::{DeserializationError, DeserializationResult};
 /// ### Simple occupancy grid map
 /// ```ignore
 /// fn main() -> Result<(), Box<dyn std::error::Error>> {
-///     let rec = rerun::RecordingStreamBuilder::new("rerun_example_grid_map").spawn()?;
+///     let rec =
+///         rerun::RecordingStreamBuilder::new("rerun_example_grid_map").spawn()?;
 ///
 ///     let width: usize = 64;
 ///     let height: usize = 64;

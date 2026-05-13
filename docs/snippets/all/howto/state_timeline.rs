@@ -1,7 +1,10 @@
 //! Demonstrates the experimental state timeline view: logging state changes and customizing display.
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let rec = rerun::RecordingStreamBuilder::new("rerun_example_howto_state_timeline").spawn()?;
+    let rec = rerun::RecordingStreamBuilder::new(
+        "rerun_example_howto_state_timeline",
+    )
+    .spawn()?;
 
     // region: state_config
     // Customize how each state value is displayed (label, color, visibility).

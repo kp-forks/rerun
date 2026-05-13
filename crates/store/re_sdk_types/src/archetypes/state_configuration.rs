@@ -43,7 +43,9 @@ use ::re_types_core::{DeserializationError, DeserializationResult};
 /// ### State changes with a custom style
 /// ```ignore
 /// fn main() -> Result<(), Box<dyn std::error::Error>> {
-///     let rec = rerun::RecordingStreamBuilder::new("rerun_example_state_configuration").spawn()?;
+///     let rec =
+///         rerun::RecordingStreamBuilder::new("rerun_example_state_configuration")
+///             .spawn()?;
 ///
 ///     // Configure how each raw state value is displayed (label, color, visibility).
 ///     rec.log_static(

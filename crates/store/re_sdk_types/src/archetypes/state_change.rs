@@ -36,7 +36,8 @@ use ::re_types_core::{DeserializationError, DeserializationResult};
 /// ### State changes over time
 /// ```ignore
 /// fn main() -> Result<(), Box<dyn std::error::Error>> {
-///     let rec = rerun::RecordingStreamBuilder::new("rerun_example_state_change").spawn()?;
+///     let rec = rerun::RecordingStreamBuilder::new("rerun_example_state_change")
+///         .spawn()?;
 ///
 ///     rec.set_time_sequence("step", 0);
 ///     rec.log("door", &rerun::StateChange::new().with_state("open"))?;

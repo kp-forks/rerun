@@ -1,7 +1,9 @@
 //! Log a batch of 2D ellipses.
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let rec = rerun::RecordingStreamBuilder::new("rerun_example_ellipses2d_batch").spawn()?;
+    let rec =
+        rerun::RecordingStreamBuilder::new("rerun_example_ellipses2d_batch")
+            .spawn()?;
 
     rec.log(
         "batch",
