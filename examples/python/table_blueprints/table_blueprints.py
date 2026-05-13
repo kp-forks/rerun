@@ -14,6 +14,9 @@ blueprint at it. The Viewer uses that column as the per-row flag state: toggling
 card's flag updates the visible table immediately and upserts the new boolean value
 back to the server using the `rerun:is_table_index` column as the row key.
 
+For testing you can use this droid rrd dataset:
+https://huggingface.co/datasets/rerun/droid_sample/tree/main
+
 Usage:
     table_blueprints
     table_blueprints /path/to/dataset
