@@ -3,7 +3,8 @@
 #include <rerun.hpp>
 
 int main(int argc, char* argv[]) {
-    const auto rec = rerun::RecordingStream("rerun_example_howto_state_timeline");
+    const auto rec =
+        rerun::RecordingStream("rerun_example_howto_state_timeline");
     rec.spawn().exit_on_failure();
 
     // region: state_config

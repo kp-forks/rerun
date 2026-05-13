@@ -39,7 +39,8 @@ namespace rerun::archetypes {
     /// #include <rerun.hpp>
     ///
     /// int main(int argc, char* argv[]) {
-    ///     const auto rec = rerun::RecordingStream("rerun_example_state_configuration");
+    ///     const auto rec =
+    ///         rerun::RecordingStream("rerun_example_state_configuration");
     ///     rec.spawn().exit_on_failure();
     ///
     ///     // Configure how each raw state value is displayed (label, color, visibility).

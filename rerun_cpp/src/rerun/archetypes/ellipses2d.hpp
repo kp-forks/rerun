@@ -39,7 +39,10 @@ namespace rerun::archetypes {
     ///
     ///     rec.log(
     ///         "simple",
-    ///         rerun::Ellipses2D::from_centers_and_half_sizes({{0.0f, 0.0f}}, {{2.0f, 1.0f}})
+    ///         rerun::Ellipses2D::from_centers_and_half_sizes(
+    ///             {{0.0f, 0.0f}},
+    ///             {{2.0f, 1.0f}}
+    ///         )
     ///     );
     /// }
     /// ```

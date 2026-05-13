@@ -45,7 +45,8 @@ int main(int argc, char* argv[]) {
     // region: scaffolding
     std::vector<rerun::LineStrip3D> lines;
     for (size_t i = 0; i < points1.size(); ++i) {
-        lines.emplace_back(rerun::LineStrip3D({points1[i].xyz, points2[i].xyz}));
+        lines.emplace_back(rerun::LineStrip3D({points1[i].xyz, points2[i].xyz})
+        );
     }
 
     rec.log(
@@ -64,18 +65,33 @@ int main(int argc, char* argv[]) {
     std::vector<rerun::Color> beads_colors(lines.size());
 
     for (size_t i = 0; i < lines.size(); ++i) {
-        auto c = static_cast<uint8_t>(bounce_lerp(80.0f, 230.0f, offsets[i] * 2.0f));
+        auto c =
+            static_cast<uint8_t>(bounce_lerp(80.0f, 230.0f, offsets[i] * 2.0f));
         beads_positions[i] = rerun::Position3D(
-            bounce_lerp(lines[i].points[0].x(), lines[i].points[1].x(), offsets[i]),
-            bounce_lerp(lines[i].points[0].y(), lines[i].points[1].y(), offsets[i]),
-            bounce_lerp(lines[i].points[0].z(), lines[i].points[1].z(), offsets[i])
+            bounce_lerp(
+                lines[i].points[0].x(),
+                lines[i].points[1].x(),
+                offsets[i]
+            ),
+            bounce_lerp(
+                lines[i].points[0].y(),
+                lines[i].points[1].y(),
+                offsets[i]
+            ),
+            bounce_lerp(
+                lines[i].points[0].z(),
+                lines[i].points[1].z(),
+                offsets[i]
+            )
         );
         beads_colors[i] = rerun::Color(c, c, c);
     }
 
     rec.log(
         "dna/structure/scaffolding/beads",
-        rerun::Points3D(beads_positions).with_colors(beads_colors).with_radii({0.06f})
+        rerun::Points3D(beads_positions)
+            .with_colors(beads_colors)
+            .with_radii({0.06f})
     );
     // endregion: beads
 
@@ -87,19 +103,35 @@ int main(int argc, char* argv[]) {
 
         for (size_t i = 0; i < lines.size(); ++i) {
             float time_offset = time.count() + offsets[i];
-            auto c = static_cast<uint8_t>(bounce_lerp(80.0f, 230.0f, time_offset * 2.0f));
+            auto c = static_cast<uint8_t>(
+                bounce_lerp(80.0f, 230.0f, time_offset * 2.0f)
+            );
 
             beads_positions[i] = rerun::Position3D(
-                bounce_lerp(lines[i].points[0].x(), lines[i].points[1].x(), time_offset),
-                bounce_lerp(lines[i].points[0].y(), lines[i].points[1].y(), time_offset),
-                bounce_lerp(lines[i].points[0].z(), lines[i].points[1].z(), time_offset)
+                bounce_lerp(
+                    lines[i].points[0].x(),
+                    lines[i].points[1].x(),
+                    time_offset
+                ),
+                bounce_lerp(
+                    lines[i].points[0].y(),
+                    lines[i].points[1].y(),
+                    time_offset
+                ),
+                bounce_lerp(
+                    lines[i].points[0].z(),
+                    lines[i].points[1].z(),
+                    time_offset
+                )
             );
             beads_colors[i] = rerun::Color(c, c, c);
         }
 
         rec.log(
             "dna/structure/scaffolding/beads",
-            rerun::Points3D(beads_positions).with_colors(beads_colors).with_radii({0.06f})
+            rerun::Points3D(beads_positions)
+                .with_colors(beads_colors)
+                .with_radii({0.06f})
         );
     }
     // endregion: time_loop
