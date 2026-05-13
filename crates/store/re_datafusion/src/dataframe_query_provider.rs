@@ -104,7 +104,7 @@ pub(crate) struct SegmentStreamExec<T: DataframeClientAPI> {
     /// Optional row limit pushed down from the scan. When set, background
     /// threads will stop fetching/processing data once this many rows have
     /// been produced.
-    limit: Option<usize>,
+    limit_rows: Option<usize>,
 
     /// Request trace-headers.
     /// Passing trace headers between phases of execution pipeline helps keep
@@ -314,7 +314,7 @@ impl<T: DataframeClientAPI> SegmentStreamExec<T> {
         mut query_expression: QueryExpression,
         index_values: IndexValuesMap,
         client: T,
-        limit: Option<usize>,
+        limit_rows: Option<usize>,
         trace_headers: Option<crate::TraceHeaders>,
         server_trace_id: Option<re_redap_client::TraceId>,
         pending_analytics: Option<crate::PendingQueryAnalytics>,
@@ -422,7 +422,7 @@ impl<T: DataframeClientAPI> SegmentStreamExec<T> {
             target_partitions: num_partitions,
             worker_runtime,
             client,
-            limit,
+            limit_rows,
             trace_headers,
             server_trace_id,
             pending_analytics,
@@ -450,14 +450,14 @@ async fn send_next_row_batch(
     target_schema: &Arc<Schema>,
     output_channel: &Sender<RecordBatch>,
     rows_sent: &mut usize,
-    limit: Option<usize>,
+    limit_rows: Option<usize>,
 ) -> ApiResult<Option<()>> {
     // If we have already sent enough rows, stop early.
-    if limit.is_some_and(|l| *rows_sent >= l) {
+    if limit_rows.is_some_and(|l| *rows_sent >= l) {
         return Ok(None);
     }
 
-    let max_rows_this_batch = limit
+    let max_rows_this_batch = limit_rows
         .map(|l| l.saturating_sub(*rows_sent).min(FLUSH_BATCH_ROWS))
         .unwrap_or(FLUSH_BATCH_ROWS);
     if max_rows_this_batch == 0 {
@@ -517,8 +517,8 @@ async fn send_next_row_batch(
     // Slice the batch to respect the row limit. We pre-cap `max_rows_this_batch`
     // by the limit, but a single `next_row()` call can return more than one row
     // (see `_next_row` for multi-row index values), so a final trim is needed.
-    let output_batch = if let Some(limit) = limit {
-        let remaining = limit.saturating_sub(*rows_sent);
+    let output_batch = if let Some(limit_rows) = limit_rows {
+        let remaining = limit_rows.saturating_sub(*rows_sent);
         if remaining == 0 {
             return Ok(None);
         }
@@ -541,6 +541,100 @@ async fn send_next_row_batch(
     Ok(Some(()))
 }
 
+/// Per-segment in-memory store + query handle used by the CPU worker.
+///
+/// Holds an `Arc<PipelineBudget>` and refunds the bytes currently in
+/// `store` to the budget on [`Drop`]. This covers every exit path
+/// uniformly — `flush` success, `flush` error via `?`, worker
+/// early-return on an upstream error, consumer hangup mid-segment,
+/// panic — since `Drop` is guaranteed to run exactly once. Without the
+/// refund a `?` early-return or cancellation would leak the reservation
+/// to sibling partitions for the remainder of the query.
+struct CurrentStores {
+    segment_id: String,
+    store: ChunkStoreHandle,
+    query_handle: QueryHandle<StorageEngine>,
+    pipeline_budget: Arc<PipelineBudget>,
+}
+
+impl CurrentStores {
+    #[tracing::instrument(level = "debug", skip_all, fields(segment_id = %segment_id))]
+    fn new(
+        segment_id: String,
+        query_expression: &QueryExpression,
+        index_values: &IndexValuesMap,
+        pipeline_budget: Arc<PipelineBudget>,
+    ) -> Self {
+        let store_id = StoreId::random(
+            StoreKind::Recording,
+            ApplicationId::from(segment_id.as_str()),
+        );
+        let store = ChunkStore::new_handle(store_id.clone(), Default::default());
+
+        let query_engine = QueryEngine::new(store.clone(), QueryCache::new_handle(store.clone()));
+        let mut individual_query = query_expression.clone();
+
+        let values = index_values
+            .as_ref()
+            .and_then(|index_values| index_values.get(&segment_id));
+        if let Some(values) = values {
+            individual_query.using_index_values = Some(values.clone());
+        }
+
+        let query_handle = query_engine.query(individual_query);
+
+        Self {
+            segment_id,
+            store,
+            query_handle,
+            pipeline_budget,
+        }
+    }
+
+    /// Current decoded bytes held in `store`. Reads `ChunkStore` stats so
+    /// the value reflects any post-construction inserts (and, once
+    /// horizon-driven GC lands, any chunks reclaimed as the safe horizon
+    /// advances).
+    fn store_bytes(&self) -> u64 {
+        self.store.read().stats().total().total_size_bytes
+    }
+
+    /// Drain every remaining row through the output channel. Consumes
+    /// `self` so the reservation is returned via `Drop` immediately
+    /// after the last batch ships — and via the same `Drop` if a
+    /// `send_next_row_batch` error short-circuits the loop via `?`.
+    #[instrument(level = "debug", skip_all)]
+    async fn flush(
+        mut self,
+        projected_schema: &Arc<Schema>,
+        output_channel: &Sender<RecordBatch>,
+        rows_sent: &mut usize,
+        limit_rows: Option<usize>,
+    ) -> ApiResult<()> {
+        while send_next_row_batch(
+            &mut self.query_handle,
+            &self.segment_id,
+            projected_schema,
+            output_channel,
+            rows_sent,
+            limit_rows,
+        )
+        .await?
+        .is_some()
+        {}
+        Ok(())
+    }
+}
+
+impl Drop for CurrentStores {
+    fn drop(&mut self) {
+        // Refund whatever the store currently holds. See the long
+        // comment in the CPU worker about why `store_bytes >= reserved_sum`
+        // and the resulting under-utilization is benign.
+        self.pipeline_budget.release(self.store_bytes() as usize);
+    }
+}
+
 // TODO(#10781) - support for sending intermediate results/chunks
 #[instrument(level = "info", skip_all)]
 async fn chunk_store_cpu_worker_thread(
@@ -549,71 +643,9 @@ async fn chunk_store_cpu_worker_thread(
     query_expression: QueryExpression,
     projected_schema: Arc<Schema>,
     index_values: IndexValuesMap,
-    limit: Option<usize>,
+    limit_rows: Option<usize>,
     pipeline_budget: Arc<PipelineBudget>,
 ) -> ApiResult<()> {
-    struct CurrentStores {
-        segment_id: String,
-        store: ChunkStoreHandle,
-        query_handle: QueryHandle<StorageEngine>,
-    }
-
-    impl CurrentStores {
-        #[tracing::instrument(level = "debug", skip_all, fields(segment_id = %segment_id))]
-        fn new(
-            segment_id: String,
-            query_expression: &QueryExpression,
-            index_values: &IndexValuesMap,
-        ) -> Self {
-            let store_id = StoreId::random(
-                StoreKind::Recording,
-                ApplicationId::from(segment_id.as_str()),
-            );
-            let store = ChunkStore::new_handle(store_id.clone(), Default::default());
-
-            let query_engine =
-                QueryEngine::new(store.clone(), QueryCache::new_handle(store.clone()));
-            let mut individual_query = query_expression.clone();
-
-            let values = index_values
-                .as_ref()
-                .and_then(|index_values| index_values.get(&segment_id));
-            if let Some(values) = values {
-                individual_query.using_index_values = Some(values.clone());
-            }
-
-            let query_handle = query_engine.query(individual_query);
-
-            Self {
-                segment_id,
-                store,
-                query_handle,
-            }
-        }
-
-        /// Flush all remaining rows from the query handle, respecting the row limit.
-        #[instrument(level = "debug", skip_all)]
-        async fn flush(
-            mut self,
-            projected_schema: &Arc<Schema>,
-            output_channel: &Sender<RecordBatch>,
-            rows_sent: &mut usize,
-            limit: Option<usize>,
-        ) -> ApiResult<()> {
-            while send_next_row_batch(
-                &mut self.query_handle,
-                &self.segment_id,
-                projected_schema,
-                output_channel,
-                rows_sent,
-                limit,
-            )
-            .await?
-            .is_some()
-            {}
-            Ok(())
-        }
-    }
     let mut current_stores: Option<CurrentStores> = None;
     let mut rows_sent: usize = 0;
     loop {
@@ -637,10 +669,12 @@ async fn chunk_store_cpu_worker_thread(
             continue;
         }
 
-        // When we change segments, flush the outputs and release the finished
-        // segment's bytes back to the budget so IO can proceed.
+        // When we change segments, flush the outputs. The reservation is
+        // returned to the budget via `Drop for CurrentStores`, which fires
+        // on the success path (end of `flush`) and on any error /
+        // cancellation path (`?` short-circuit, consumer hangup, panic).
         //
-        // The `release` call uses `ChunkStore::stats().total().total_size_bytes`,
+        // The release uses `ChunkStore::stats().total().total_size_bytes`,
         // while the IO side reserves using `re_byte_size::SizeBytes::total_size_bytes`
         // summed per inserted chunk. Both internally invoke the same
         // `SizeBytes::total_size_bytes` on each `Arc<Chunk>` (see
@@ -661,13 +695,16 @@ async fn chunk_store_cpu_worker_thread(
         // worth correcting; revisit if the chunk-store internals
         // change in a way that grows the gap.
         if let Some(current_stores) = current_stores.take_if(|s| s.segment_id != segment_id) {
-            let store_bytes = current_stores.store.read().stats().total().total_size_bytes as usize;
             current_stores
-                .flush(&projected_schema, &output_channel, &mut rows_sent, limit)
+                .flush(
+                    &projected_schema,
+                    &output_channel,
+                    &mut rows_sent,
+                    limit_rows,
+                )
                 .await?;
-            pipeline_budget.release(store_bytes);
 
-            if limit.is_some_and(|l| rows_sent >= l) {
+            if limit_rows.is_some_and(|l| rows_sent >= l) {
                 return Ok(());
             }
         }
@@ -675,7 +712,12 @@ async fn chunk_store_cpu_worker_thread(
         let CurrentStores {
             store, segment_id, ..
         } = current_stores.get_or_insert_with(|| {
-            CurrentStores::new(segment_id, &query_expression, &index_values)
+            CurrentStores::new(
+                segment_id,
+                &query_expression,
+                &index_values,
+                pipeline_budget.clone(),
+            )
         });
 
         let _insert_span = tracing::trace_span!(
@@ -698,13 +740,18 @@ async fn chunk_store_cpu_worker_thread(
         }
     }
 
-    // Flush out remaining of last segment
+    // Flush out remaining of last segment. The reservation is returned
+    // via `Drop for CurrentStores`, whether `flush` completes or `?`
+    // short-circuits inside it.
     if let Some(current_stores) = current_stores {
-        let store_bytes = current_stores.store.read().stats().total().total_size_bytes as usize;
         current_stores
-            .flush(&projected_schema, &output_channel, &mut rows_sent, limit)
+            .flush(
+                &projected_schema,
+                &output_channel,
+                &mut rows_sent,
+                limit_rows,
+            )
             .await?;
-        pipeline_budget.release(store_bytes);
     }
 
     Ok(())
@@ -1327,7 +1374,7 @@ impl<T: DataframeClientAPI> ExecutionPlan for SegmentStreamExec<T> {
         let (batches_tx, batches_rx) = tokio::sync::mpsc::channel(CPU_THREAD_IO_CHANNEL_SIZE);
         let query_expression = self.query_expression.clone();
         let projected_schema = self.projected_schema.clone();
-        let limit = self.limit;
+        let limit_rows = self.limit_rows;
         let cpu_join_handle = Some(
             self.worker_runtime.handle().spawn(
                 chunk_store_cpu_worker_thread(
@@ -1336,7 +1383,7 @@ impl<T: DataframeClientAPI> ExecutionPlan for SegmentStreamExec<T> {
                     query_expression,
                     projected_schema,
                     self.index_values.clone(),
-                    limit,
+                    limit_rows,
                     Arc::clone(&pipeline_budget),
                 )
                 .instrument(tracing::info_span!("cpu_worker")),
@@ -1382,7 +1429,7 @@ impl<T: DataframeClientAPI> ExecutionPlan for SegmentStreamExec<T> {
             target_partitions,
             worker_runtime: Arc::new(CpuRuntime::try_new(target_partitions)?),
             client: self.client.clone(),
-            limit: self.limit,
+            limit_rows: self.limit_rows,
             trace_headers: self.trace_headers.clone(),
             server_trace_id: self.server_trace_id,
             pending_analytics: self.pending_analytics.clone(),
@@ -1727,5 +1774,32 @@ mod tests {
         // Verify segB has 2 chunks (they should be grouped together)
         let seg_b_chunks = sorted_chunks[1].1.len();
         assert_eq!(seg_b_chunks, 2);
+    }
+
+    /// `Drop for CurrentStores` returns the in-store bytes to the budget.
+    /// Covers every exit path uniformly: `flush` success, worker `?`
+    /// early-return on an upstream error, consumer hangup mid-segment,
+    /// panic. Without the refund, the reservation would be pinned for
+    /// the remainder of the query.
+    #[tokio::test]
+    async fn test_current_stores_drop_refunds_budget() {
+        let budget = Arc::new(PipelineBudget::new(1 << 30, 1));
+        let releases_before = budget.total_releases();
+
+        {
+            let _stores = CurrentStores::new(
+                "drop-refund-test".to_owned(),
+                &QueryExpression::default(),
+                &None,
+                budget.clone(),
+            );
+            // Dropping should invoke `release` exactly once.
+        }
+
+        assert_eq!(
+            budget.total_releases(),
+            releases_before + 1,
+            "Drop must call release exactly once",
+        );
     }
 }
