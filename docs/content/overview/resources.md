@@ -10,12 +10,14 @@ This page provides an overview of how the Rerun documentation is organized to he
 High-level introduction to Rerun:
 
 - **[What is Rerun?](what-is-rerun.md)** - Learn about Rerun, the Unified Data Layer for Physical AI
-- **[Installing the Viewer](installing-rerun/viewer.md)** - Get Rerun installed on your system
+- **[Docs Guide](resources.md)** - You are here
 
 ## Getting started
 
 Step-by-step guides to get up and running quickly:
 
+- **[Install Rerun](../getting-started/install-rerun/viewer.md)** - Get Rerun installed on your system
+- **[Setup up a project](../getting-started/project-setup.md)** - Include Rerun in your code
 - **[Log and Ingest](../getting-started/data-in.md)** - Learn how to log data to Rerun from your code
 - **[Visualize](../getting-started/configure-the-viewer.md)** - Customize the visualization to your needs
 - **[Query and Transform](../getting-started/data-out.md)** - Query and export data from Rerun recordings
