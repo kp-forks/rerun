@@ -34,9 +34,9 @@ use datafusion::physical_plan::execution_plan::{Boundedness, EmissionType};
 use datafusion::physical_plan::{DisplayAs, DisplayFormatType, ExecutionPlan, PlanProperties};
 use futures::StreamExt as _;
 use futures_util::{FutureExt as _, Stream};
-use re_dataframe::external::re_chunk::Chunk;
 use re_dataframe::external::re_chunk_store::ChunkStore;
 use re_dataframe::utils::align_record_batch_to_schema;
+use re_dataframe::{ChunkStoreConfig, external::re_chunk::Chunk};
 use re_dataframe::{
     ChunkStoreHandle, Index, QueryCache, QueryEngine, QueryExpression, QueryHandle, StorageEngine,
 };
@@ -568,7 +568,8 @@ impl CurrentStores {
             StoreKind::Recording,
             ApplicationId::from(segment_id.as_str()),
         );
-        let store = ChunkStore::new_handle(store_id.clone(), Default::default());
+        let config = ChunkStoreConfig::ALL_DISABLED; // Don't spend CPU time splitting and joining chunks. Trust the input.
+        let store = ChunkStore::new_handle(store_id.clone(), config);
 
         let query_engine = QueryEngine::new(store.clone(), QueryCache::new_handle(store.clone()));
         let mut individual_query = query_expression.clone();
@@ -719,12 +720,13 @@ async fn chunk_store_cpu_worker_thread(
             )
         });
 
-        let _insert_span = tracing::trace_span!(
+        let _insert_span = tracing::debug_span!(
             "insert_chunks",
             segment_id = %segment_id,
             n = chunks.len(),
         )
         .entered();
+        re_tracing::profile_scope!("insert_chunks");
         for chunk in chunks {
             store
                 .write()

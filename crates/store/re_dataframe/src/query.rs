@@ -1506,6 +1506,7 @@ impl<E: StorageEngineLike> QueryHandle<E> {
     /// admitted regardless of the cap, so a single wide row can exceed `max_bytes`.
     #[inline]
     pub fn next_n_rows(&mut self, max_rows: usize, max_bytes: usize) -> NextNRowsOutput {
+        re_tracing::profile_function!();
         let _ = self.init();
         let Self {
             engine,
