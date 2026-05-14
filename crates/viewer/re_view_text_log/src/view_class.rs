@@ -296,7 +296,6 @@ Filter message types and toggle column visibility in a selection panel.",
 /// `scroll_to_row` indicates how far down we want to scroll in terms of logical rows,
 /// as opposed to `scroll_to_offset` (computed below) which is how far down we want to
 /// scroll in terms of actual points.
-#[expect(clippy::too_many_arguments)]
 fn table_ui(
     ctx: &ViewerContext<'_>,
     ui: &mut egui::Ui,

@@ -977,7 +977,6 @@ fn run_impl(
 }
 
 #[cfg(feature = "native_viewer")]
-#[expect(clippy::too_many_arguments)]
 #[allow(clippy::allow_attributes, unused_variables)]
 fn start_native_viewer(
     args: &Args,

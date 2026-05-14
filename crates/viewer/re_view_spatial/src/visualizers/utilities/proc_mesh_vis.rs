@@ -159,7 +159,6 @@ impl<'ctx> ProcMeshDrawableBuilder<'ctx> {
     }
 
     /// Add a batch of data to be drawn.
-    #[expect(clippy::too_many_arguments)]
     pub fn add_batch(
         &mut self,
         query_context: &QueryContext<'_>,

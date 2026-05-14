@@ -182,7 +182,6 @@ impl App {
     }
 
     /// Create a viewer that receives new log messages over time
-    #[expect(clippy::too_many_arguments)]
     pub fn with_commands(
         main_thread_token: MainThreadToken,
         build_info: re_build_info::BuildInfo,
@@ -2498,7 +2497,6 @@ impl App {
     /// Top-level ui function.
     ///
     /// Shows the viewer ui.
-    #[expect(clippy::too_many_arguments)]
     fn ui_impl(
         &mut self,
         ui: &mut egui::Ui,

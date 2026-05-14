@@ -605,7 +605,6 @@ impl QueryDatasetResponse {
         )
     }
 
-    #[expect(clippy::too_many_arguments)]
     pub fn create_dataframe_with_timelines(
         chunk_ids: Vec<re_chunk::ChunkId>,
         chunk_segment_ids: Vec<String>,

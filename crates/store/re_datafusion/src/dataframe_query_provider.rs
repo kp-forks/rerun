@@ -304,7 +304,6 @@ impl<T: DataframeClientAPI> RecordBatchStream for DataframeSegmentStream<T> {
 
 impl<T: DataframeClientAPI> SegmentStreamExec<T> {
     #[tracing::instrument(level = "info", skip_all)]
-    #[expect(clippy::too_many_arguments)]
     pub fn try_new(
         table_schema: &SchemaRef,
         sort_index: Option<Index>,

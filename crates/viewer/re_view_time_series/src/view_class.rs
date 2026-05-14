@@ -1200,7 +1200,6 @@ fn all_scalar_mappings(
 ///
 /// Returns the hovered data result item for selection/highlighting, or `None` if
 /// no data point is close enough.
-#[expect(clippy::too_many_arguments)]
 fn find_nearest_data_point_and_show_tooltip(
     ui: &egui::Ui,
     response: &egui::Response,

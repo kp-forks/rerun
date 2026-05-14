@@ -193,7 +193,6 @@ impl PyLazyChunkStreamInternal {
         gop_batching = false,
         split_size_ratio = None,
     ))]
-    #[expect(clippy::too_many_arguments)]
     fn collect(
         &self,
         py: Python<'_>,

@@ -850,9 +850,11 @@ zero_sized_map_values = "warn"
 # Disabled waiting on https://github.com/rust-lang/rust-clippy/issues/9602
 #self_named_module_files = "warn"
 
+# Things we explicitly allow:
 manual_range_contains = "allow" # this one is just worse imho
 map_unwrap_or = "allow" # so is this one
 ref_patterns = "allow" # It's nice to avoid ref pattern, but there are some situations that are hard (impossible?) to express without.
+too_many_arguments = "allow" # yes, we should avoid too many arguments, but enforcing it by lint is pointless.
 
 # TODO(emilk): enable more of these lints:
 cast_possible_truncation = "allow" # Moo much noise, sadly

@@ -156,7 +156,6 @@ impl DataframeQueryTableProvider<ConnectionClient> {
     /// If `arrow_schema` is `Some`, it is used directly and the `/GetDatasetSchema`
     /// RPC is skipped — useful when the caller has already fetched the schema.
     #[tracing::instrument(level = "info", skip_all)]
-    #[cfg_attr(not(target_arch = "wasm32"), expect(clippy::too_many_arguments))]
     pub async fn new(
         origin: Origin,
         connection: ConnectionRegistryHandle,

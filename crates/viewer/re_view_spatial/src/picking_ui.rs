@@ -27,7 +27,6 @@ use crate::{
     },
 };
 
-#[expect(clippy::too_many_arguments)]
 pub fn picking(
     ctx: &ViewerContext<'_>,
     missing_chunk_reporter: &MissingChunkReporter,

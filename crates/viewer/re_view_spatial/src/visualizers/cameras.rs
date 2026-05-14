@@ -41,7 +41,6 @@ struct CameraComponentDataWithFallbacks {
 }
 
 impl CamerasVisualizer {
-    #[expect(clippy::too_many_arguments)]
     fn visit_instance(
         data: &mut SpatialViewVisualizerData,
         pinhole_cameras: &mut Vec<PinholeWrapper>,

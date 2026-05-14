@@ -716,7 +716,6 @@ impl TimePanel {
     }
 
     // All the entity rows and their data density graphs:
-    #[expect(clippy::too_many_arguments)]
     fn tree_ui(
         &mut self,
         store_ctx: &StoreViewContext<'_>,
@@ -768,7 +767,6 @@ impl TimePanel {
     }
 
     /// Display the list item for an entity.
-    #[expect(clippy::too_many_arguments)]
     fn show_entity(
         &mut self,
         store_ctx: &StoreViewContext<'_>,
@@ -926,7 +924,6 @@ impl TimePanel {
     }
 
     /// Display the contents of an entity, i.e. its sub-entities and its components.
-    #[expect(clippy::too_many_arguments)]
     fn show_entity_contents(
         &mut self,
         store_ctx: &StoreViewContext<'_>,
@@ -1118,7 +1115,6 @@ impl TimePanel {
         }
     }
 
-    #[expect(clippy::too_many_arguments)]
     fn handle_interactions_for_item(
         &mut self,
         store_ctx: &StoreViewContext<'_>,
@@ -2043,7 +2039,6 @@ impl TimePanel {
     /// A vertical line that shows the current time.
     ///
     /// This function both paints it and allows click and drag to interact with the current time.
-    #[expect(clippy::too_many_arguments)]
     fn time_marker_ui(
         &self,
         viewer_ctx: &ViewerContext<'_>,

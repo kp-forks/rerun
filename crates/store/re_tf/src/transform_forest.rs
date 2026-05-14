@@ -429,7 +429,6 @@ impl re_byte_size::MemUsageTreeCapture for TransformForest {
 
 /// Starting from a `current_frame`, walks towards the parent and accumulates transforms into `transform_stack`.
 /// Stops until not more connection is found or an already processed `frame_id` is hit.
-#[expect(clippy::too_many_arguments)]
 fn walk_towards_parent(
     entity_db: &EntityDb,
     missing_chunk_reporter: &MissingChunkReporter,

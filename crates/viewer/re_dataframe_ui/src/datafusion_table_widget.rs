@@ -506,7 +506,6 @@ impl<'a> DataFusionTableWidget<'a> {
     }
 
     /// Actual UI code to render a table.
-    #[expect(clippy::too_many_arguments)]
     fn table_ui(
         &self,
         ctx: &StoreViewContext<'_>,

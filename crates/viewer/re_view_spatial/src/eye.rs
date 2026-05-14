@@ -801,7 +801,6 @@ impl EyeState {
     /// Handles both tracking and clearing tracked entity.
     ///
     /// If we are tracking an entity, this will return the current eye we should use.
-    #[expect(clippy::too_many_arguments)]
     fn handle_tracking_entity(
         &mut self,
         ctx: &ViewContext<'_>,

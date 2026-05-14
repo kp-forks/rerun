@@ -48,7 +48,6 @@ pub struct DepthImageComponentData {
     pub magnification_filter: MagnificationFilter,
 }
 
-#[expect(clippy::too_many_arguments)]
 pub fn process_depth_image_data(
     ctx: &QueryContext<'_>,
     ent_context: &SpatialSceneVisualizerInstructionContext<'_>,

@@ -199,7 +199,6 @@ impl AppState {
             .map(|q| (*time_ctrl.timeline_name(), q))
     }
 
-    #[expect(clippy::too_many_arguments)]
     pub fn show(
         &mut self,
         app_env: &crate::AppEnvironment,

@@ -327,7 +327,7 @@ fn build_view_contents(
 }
 
 /// Build a table provider for dataframe queries with the given parameters.
-#[expect(clippy::too_many_arguments, clippy::fn_params_excessive_bools)]
+#[expect(clippy::fn_params_excessive_bools)]
 fn build_dataframe_query_table_provider(
     py: Python<'_>,
     dataset: &Py<PyDatasetEntryInternal>,

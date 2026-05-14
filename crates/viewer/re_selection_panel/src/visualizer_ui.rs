@@ -748,7 +748,6 @@ impl<'a> SourceMappingContext<'a> {
     }
 }
 
-#[expect(clippy::too_many_arguments)]
 fn source_component_ui(
     ui: &mut egui::Ui,
     label: &str,

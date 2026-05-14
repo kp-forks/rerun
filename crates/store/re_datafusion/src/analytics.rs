@@ -732,10 +732,6 @@ impl Drop for PendingInner {
 /// so the exact attribute set the analytics pipeline relies on can be locked
 /// down by unit tests; if a future change accidentally drops or renames a
 /// field, the tests fail.
-#[expect(
-    clippy::too_many_arguments,
-    reason = "pure builder fn; grouping these would be churn without clarity"
-)]
 fn build_query_span(
     query_info: &QueryInfo,
     fetch: &TaskFetchStats,
@@ -1155,10 +1151,6 @@ impl Drop for PendingTableInner {
 /// PendingTableInner` so the exact attribute set the analytics pipeline relies
 /// on can be locked down by unit tests; if a future change accidentally drops
 /// or renames a field, the tests fail.
-#[expect(
-    clippy::too_many_arguments,
-    reason = "pure builder fn; grouping these would be churn without clarity"
-)]
 pub(crate) fn build_table_query_span(
     info: &TableQueryInfo,
     stats: TableScanStatsSnapshot,

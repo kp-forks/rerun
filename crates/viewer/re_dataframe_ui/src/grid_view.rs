@@ -36,7 +36,6 @@ struct CardConfig<'a> {
 /// Render the data as a card-based grid.
 ///
 /// Returns a list of flag toggle changes that need to be applied to the underlying data.
-#[expect(clippy::too_many_arguments)]
 pub fn grid_ui(
     ctx: &StoreViewContext<'_>,
     ui: &mut Ui,
@@ -129,7 +128,6 @@ fn lookup_column(columns: &Columns<'_>, name: &str, kind: &str) -> Option<usize>
 /// Render the content of a single card for the given table row.
 ///
 /// This renders only the card interior — the frame is handled by [`CardLayout`].
-#[expect(clippy::too_many_arguments)]
 fn card_content_ui(
     ctx: &StoreViewContext<'_>,
     config: &CardConfig<'_>,

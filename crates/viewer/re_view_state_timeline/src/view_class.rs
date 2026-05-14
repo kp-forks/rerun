@@ -590,7 +590,6 @@ fn hit_test_phase(
 }
 
 /// Paint a single lane (label + colored band of phases) and show tooltips on hover.
-#[expect(clippy::too_many_arguments)]
 fn paint_lane(
     ui: &egui::Ui,
     painter: &egui::Painter,

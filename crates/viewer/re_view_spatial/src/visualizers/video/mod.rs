@@ -102,7 +102,6 @@ struct VideoStreamCtx<'a> {
 }
 
 impl<'a> VideoStreamCtx<'a> {
-    #[expect(clippy::too_many_arguments)]
     pub fn new(
         view_context: &'a ViewContext<'a>,
         view_query: &'a ViewQuery<'a>,
@@ -568,7 +567,6 @@ impl From<VideoPlayerError> for VideoPlaybackIssue {
 /// - Only `frame`: renders the frame texture.
 /// - Only `issue`: shows the error/loading overlay.
 /// - Both `Some`: renders the frame with the error overlaid on top.
-#[expect(clippy::too_many_arguments)]
 fn show_video_frame(
     ctx: &ViewContext<'_>,
     visualizer_data: &mut SpatialViewVisualizerData,
