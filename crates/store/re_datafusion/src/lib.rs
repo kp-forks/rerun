@@ -17,6 +17,8 @@ mod grpc_streaming_provider;
 mod pipeline_budget;
 pub(crate) mod pushdown_expressions;
 mod search_provider;
+#[cfg(not(target_arch = "wasm32"))]
+mod segment_chunk_manifest;
 mod segment_table;
 mod table_entry_provider;
 mod wasm_compat;
