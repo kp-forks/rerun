@@ -267,7 +267,7 @@ pub async fn fetch_batch_direct(
     batch: &RecordBatch,
     http_client: &reqwest::Client,
     stats: &mut TaskFetchStats,
-    pending: Option<&PendingQueryAnalytics>,
+    pending: &PendingQueryAnalytics,
 ) -> ApiResult<Vec<ChunksWithSegment>> {
     #[cfg(not(target_arch = "wasm32"))]
     let byte_size = batch_byte_size(batch);
@@ -285,9 +285,7 @@ pub async fn fetch_batch_direct(
         }
         Err(err) => {
             let reason = DirectFetchFailureReason::classify(&err);
-            if let Some(pending) = pending {
-                pending.record_direct_terminal_failure(reason);
-            }
+            pending.record_direct_terminal_failure(reason);
             #[cfg(not(target_arch = "wasm32"))]
             metrics::record_direct_failure(reason.as_str());
             Err(re_redap_client::ApiError::connection_with_source(

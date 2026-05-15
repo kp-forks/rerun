@@ -354,6 +354,15 @@ fn rerun_bindings(py: Python<'_>, m: &Bound<'_, PyModule>) -> PyResult<()> {
         m
     )?)?;
 
+    // query_metrics(): experimental, customer-facing context manager for
+    // capturing DataFusion query metrics from Python.
+    m.add_class::<crate::query_metrics::PyQueryMetrics>()?;
+    m.add_class::<crate::query_metrics::PyMetricsCollectorHandle>()?;
+    m.add_function(wrap_pyfunction!(
+        crate::query_metrics::new_metrics_collector,
+        m
+    )?)?;
+
     // viewer
     crate::viewer::register(py, m)?;
 

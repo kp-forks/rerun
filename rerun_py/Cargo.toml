@@ -61,6 +61,7 @@ re_build_info.workspace = true
 re_chunk.workspace = true
 re_lenses_core.workspace = true
 re_chunk_store.workspace = true
+re_format.workspace = true
 re_importer.workspace = true
 re_datafusion.workspace = true
 re_error.workspace = true

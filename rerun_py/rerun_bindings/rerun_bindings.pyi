@@ -1747,3 +1747,130 @@ class LazyChunkStreamIterator:
 
     def __next__(self) -> ChunkInternal:
         """Implement next(self)."""
+
+#####################################################################################################################
+## METRICS APIS                                                                                                   ##
+#####################################################################################################################
+
+class _QueryMetrics:
+    """Frozen mirror of `re_datafusion::QuerySnapshot`. One per query."""
+
+    # Plan-time
+    dataset_id: str
+    """The dataset being queried."""
+
+    query_chunks: int
+    """Number of unique chunks returned by `query_dataset` (subset of the dataset)."""
+
+    query_segments: int
+    """Number of distinct segments involved in the query."""
+
+    query_layers: int
+    """Number of distinct layers touched by the query."""
+
+    query_columns: int
+    """Number of columns in the query output schema."""
+
+    query_entities: int
+    """Number of entity paths in the query request."""
+
+    query_bytes: int
+    """Total size of all queried chunks in bytes (from chunk metadata)."""
+
+    query_chunks_per_segment_min: int
+    """Min number of chunks touched within any single segment in this query."""
+
+    query_chunks_per_segment_max: int
+    """Max number of chunks touched within any single segment in this query."""
+
+    query_chunks_per_segment_mean: float
+    """Mean number of chunks touched per segment in this query."""
+
+    query_type: str
+    """Query shape: one of `"static"`, `"latest_at"`, `"range"`, `"dataframe"`, or `"full_scan"`."""
+
+    primary_index_name: str | None
+    """Name of the sort/filter index (timeline) for this query, if any."""
+
+    time_to_first_chunk_info: timedelta | None
+    """Time from sending `query_dataset` until the first response message arrives (the chunk metadata, not actual chunk data)."""
+
+    filters_pushed_down: int
+    """Number of filter expressions the table provider was able to push down to the server (`Exact` or `Inexact` from `supports_filters_pushdown`)."""
+
+    filters_applied_client_side: int
+    """Number of filter expressions that could not be pushed down — applied client-side by DataFusion via a downstream `FilterExec`."""
+
+    entity_path_narrowing_applied: bool
+    """True when projection-based entity-path narrowing actually trimmed the set of entity paths sent to `query_dataset`."""
+
+    # Execution-time
+    total_duration: timedelta
+    """Wall-clock time from the start of `scan()` until the query finished (cleanly or via error). Always populated."""
+
+    time_to_first_chunk: timedelta | None
+    """Time from scan start until the first chunk reached the consumer. `None` when no chunk was ever delivered (e.g. early error, empty result)."""
+
+    error_kind: str | None
+    """`None` on success. On failure, one of the stable string labels `"grpc_fetch"`, `"direct_fetch"`, `"decode"`, or `"other"`."""
+
+    direct_terminal_reason: str | None
+    """Reason a direct (HTTP Range) fetch hit a terminal failure — i.e. a non-retryable error or retries exhausted. `None` when no direct fetch terminally failed (can be `None` even when `error_kind` is set, if the failure was on the gRPC or decode path)."""
+
+    # Fetch counters
+    fetch_grpc_requests: int
+    """Number of gRPC fetch calls the scanner issued."""
+
+    fetch_grpc_bytes: int
+    """Sum of `chunk_byte_length` (catalog metadata, compressed on-disk size) over chunks fetched via gRPC. Excludes framing overhead and bytes consumed by failed retries — a lower bound on wire traffic."""
+
+    fetch_direct_requests: int
+    """Number of direct (HTTP Range) fetches the scanner issued. Counts each merged request once, regardless of byte ranges or retry attempts."""
+
+    fetch_direct_bytes: int
+    """Sum of `chunk_byte_length` (catalog metadata, compressed on-disk size) over chunks fetched via direct HTTP. Does **not** count filler bytes that range-merging pulls between adjacent chunks, so actual wire traffic can exceed this value."""
+
+    fetch_direct_retries: int
+    """Total number of direct-fetch retry *attempts* across all requests. A request retried 3 times contributes 3 here."""
+
+    fetch_direct_requests_retried: int
+    """Number of distinct direct-fetch requests that needed at least one retry. Always `≤ fetch_direct_retries`; the ratio between them is the average retries per retried request."""
+
+    fetch_direct_retry_sleep: timedelta
+    """Total backoff time slept across all direct-fetch retries."""
+
+    fetch_direct_max_attempt: int
+    """Sum of per-partition max attempts. For a single-partition query this is the true max; for multi-partition queries it is an upper bound on the true max — `MetricsSet::Count` has no `fetch_max` operation, so cross-partition aggregation sums."""
+
+    fetch_direct_original_ranges: int
+    """Number of byte ranges the planner *wanted* to fetch directly, before adjacent ranges were coalesced. With `fetch_direct_merged_ranges`, gives the range-merging ratio."""
+
+    fetch_direct_merged_ranges: int
+    """Number of byte ranges actually issued after merging adjacent ranges into combined HTTP Range requests. Equals `fetch_direct_requests` for a single-range-per-request scanner."""
+
+class _MetricsCollectorHandle:
+    """Opaque handle held by the `query_metrics()` context manager."""
+
+    def snapshot(self) -> list[_QueryMetrics]:
+        """
+        Non-destructive copy of all snapshots received so far.
+
+        Suitable for use mid-scope (`collector.queries` in the Python wrapper).
+        """
+
+    def drain(self) -> list[_QueryMetrics]:
+        """
+        Take and clear all snapshots.
+
+        Used by the context manager on `__exit__` to drain any remaining
+        snapshots into the user-visible Python `MetricsCollector` wrapper.
+        """
+
+def _new_metrics_collector() -> _MetricsCollectorHandle:
+    """
+    Allocate a fresh [`MetricsCollector`] and wrap it in a Python handle.
+
+    The Python `query_metrics()` context manager pushes the returned handle
+    onto the `_active_collectors` `ContextVar` for the duration of the
+    `with` block; nothing is registered globally.
+    """

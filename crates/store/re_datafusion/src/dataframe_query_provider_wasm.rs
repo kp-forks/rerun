@@ -2,11 +2,11 @@ use std::any::Any;
 use std::collections::BTreeMap;
 use std::fmt::Debug;
 use std::pin::Pin;
-use std::sync::Arc;
+use std::sync::{Arc, atomic::AtomicBool};
 use std::task::{Context, Poll};
 
 use crate::DataframeClientAPI;
-use crate::dataframe_query_common::{IndexValuesMap, group_chunk_infos_by_segment_id};
+use crate::dataframe_query_common::{IndexValuesMap, PlanSummary, group_chunk_infos_by_segment_id};
 use arrow::array::{Array, RecordBatch, RecordBatchOptions, StringArray};
 use arrow::compute::SortOptions;
 use arrow::datatypes::{DataType, Field, Schema, SchemaRef};
@@ -23,6 +23,10 @@ use datafusion::physical_expr::{
     EquivalenceProperties, LexOrdering, Partitioning, PhysicalExpr, PhysicalSortExpr,
 };
 use datafusion::physical_plan::execution_plan::{Boundedness, EmissionType};
+use datafusion::physical_plan::metrics::MetricsSet;
+
+use crate::analytics::build_metrics_set_for_explain;
+use crate::metrics_capture::QueryMetrics;
 use datafusion::physical_plan::{DisplayAs, DisplayFormatType, ExecutionPlan, PlanProperties};
 use futures_util::{Stream, StreamExt as _};
 use re_dataframe::external::re_chunk_store::ChunkStore;
@@ -50,8 +54,24 @@ pub(crate) struct SegmentStreamExec<T: DataframeClientAPI> {
     target_partitions: usize,
     client: T,
 
-    /// Pending query analytics — keeps alive until all streams complete.
-    pending_analytics: Option<crate::PendingQueryAnalytics>,
+    /// Pending query analytics — always present; the OTLP send on drop is
+    /// gated internally by whether the per-process telemetry stack is active.
+    pending_analytics: crate::PendingQueryAnalytics,
+
+    /// Per-query counters + embedded plan-time `QueryInfo`. The wasm path
+    /// doesn't run a per-partition IO loop with `TaskFetchStats`, so the
+    /// fetch counters stay at zero; the embedded `query_info` is what feeds
+    /// the snapshot path and `EXPLAIN ANALYZE`.
+    metrics: Arc<QueryMetrics>,
+
+    /// Plan-time summary used by `DisplayAs::Verbose`.
+    plan_summary: PlanSummary,
+
+    /// Subscribers captured at plan-construction time (from `query_metrics()`).
+    captured_collectors: Vec<crate::MetricsCollector>,
+
+    /// Latched true the first time a snapshot is sent.
+    snapshot_sent: Arc<AtomicBool>,
 }
 
 pub struct DataframeSegmentStream<T: DataframeClientAPI> {
@@ -63,7 +83,16 @@ pub struct DataframeSegmentStream<T: DataframeClientAPI> {
     remaining_segment_ids: Vec<String>,
 
     /// Pending query analytics — kept alive so the event fires on drop.
-    _pending_analytics: Option<crate::PendingQueryAnalytics>,
+    pending_analytics: crate::PendingQueryAnalytics,
+
+    /// Subscribers captured by the parent plan.
+    captured_collectors: Vec<crate::MetricsCollector>,
+
+    /// Shared latch — see `SegmentStreamExec::snapshot_sent`.
+    snapshot_sent: Arc<AtomicBool>,
+
+    /// Shared metrics handle used by the snapshot path.
+    metrics: Arc<QueryMetrics>,
 }
 
 impl<T: DataframeClientAPI> DataframeSegmentStream<T> {
@@ -140,6 +169,44 @@ impl<T: DataframeClientAPI> DataframeSegmentStream<T> {
     }
 }
 
+impl<T: DataframeClientAPI> DataframeSegmentStream<T> {
+    /// Emit a `QuerySnapshot` to `query_metrics()` subscribers if this is the
+    /// first time we've reached end-of-stream for this plan. Idempotent.
+    fn maybe_emit_snapshot(&self) {
+        if self.captured_collectors.is_empty() {
+            return;
+        }
+        if self
+            .snapshot_sent
+            .compare_exchange(
+                false,
+                true,
+                std::sync::atomic::Ordering::AcqRel,
+                std::sync::atomic::Ordering::Acquire,
+            )
+            .is_err()
+        {
+            return;
+        }
+        let snapshot = crate::metrics_capture::build_query_snapshot(
+            &self.metrics,
+            self.pending_analytics.total_duration(),
+            self.pending_analytics.time_to_first_chunk(),
+            self.pending_analytics.error_kind(),
+            self.pending_analytics.direct_terminal_reason(),
+        );
+        crate::metrics_capture::push_snapshot(&self.captured_collectors, &snapshot);
+    }
+}
+
+impl<T: DataframeClientAPI> Drop for DataframeSegmentStream<T> {
+    fn drop(&mut self) {
+        // Cover the cancelled-mid-flight case — `poll_next` may have returned
+        // `None` first, in which case the CAS no-ops.
+        self.maybe_emit_snapshot();
+    }
+}
+
 impl<T: DataframeClientAPI> Stream for DataframeSegmentStream<T> {
     type Item = Result<RecordBatch, DataFusionError>;
 
@@ -149,11 +216,13 @@ impl<T: DataframeClientAPI> Stream for DataframeSegmentStream<T> {
 
         loop {
             if this.remaining_segment_ids.is_empty() && this.current_query.is_none() {
+                this.maybe_emit_snapshot();
                 return Poll::Ready(None);
             }
 
             while this.current_query.is_none() {
                 let Some(segment_id) = this.remaining_segment_ids.pop() else {
+                    this.maybe_emit_snapshot();
                     return Poll::Ready(None);
                 };
 
@@ -212,7 +281,9 @@ impl<T: DataframeClientAPI> SegmentStreamExec<T> {
         _index_values: IndexValuesMap,
         client: T,
         _limit: Option<usize>,
-        pending_analytics: Option<crate::PendingQueryAnalytics>,
+        pending_analytics: crate::PendingQueryAnalytics,
+        metrics: Arc<QueryMetrics>,
+        captured_collectors: Vec<crate::MetricsCollector>,
     ) -> datafusion::common::Result<Self> {
         let projected_schema = match projection {
             Some(p) => Arc::new(table_schema.project(p)?),
@@ -276,6 +347,10 @@ impl<T: DataframeClientAPI> SegmentStreamExec<T> {
         let chunk_info = group_chunk_infos_by_segment_id(chunk_info_batches.as_slice())?;
         drop(chunk_info_batches);
 
+        let plan_summary = PlanSummary::from_query_info(&metrics.query_info);
+
+        let snapshot_sent = Arc::new(AtomicBool::new(false));
+
         Ok(Self {
             props,
             chunk_info,
@@ -284,6 +359,10 @@ impl<T: DataframeClientAPI> SegmentStreamExec<T> {
             target_partitions: num_partitions,
             client,
             pending_analytics,
+            metrics,
+            plan_summary,
+            captured_collectors,
+            snapshot_sent,
         })
     }
 }
@@ -389,6 +468,10 @@ impl<T: DataframeClientAPI> ExecutionPlan for SegmentStreamExec<T> {
             target_partitions,
             client: self.client.clone(),
             pending_analytics: self.pending_analytics.clone(),
+            metrics: Arc::clone(&self.metrics),
+            plan_summary: self.plan_summary.clone(),
+            captured_collectors: self.captured_collectors.clone(),
+            snapshot_sent: Arc::clone(&self.snapshot_sent),
         };
 
         plan.props.partitioning = match plan.props.partitioning {
@@ -439,19 +522,49 @@ impl<T: DataframeClientAPI> ExecutionPlan for SegmentStreamExec<T> {
             remaining_segment_ids,
             current_query: None,
             query_expression,
-            _pending_analytics: self.pending_analytics.clone(),
+            pending_analytics: self.pending_analytics.clone(),
+            captured_collectors: self.captured_collectors.clone(),
+            snapshot_sent: Arc::clone(&self.snapshot_sent),
+            metrics: Arc::clone(&self.metrics),
         };
 
         Ok(Box::pin(stream))
     }
+
+    fn metrics(&self) -> Option<MetricsSet> {
+        Some(build_metrics_set_for_explain(
+            &self.metrics,
+            self.target_partitions,
+            self.pending_analytics.time_to_first_chunk(),
+        ))
+    }
 }
 
 impl<T: DataframeClientAPI> DisplayAs for SegmentStreamExec<T> {
-    fn fmt_as(&self, _t: DisplayFormatType, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt_as(&self, t: DisplayFormatType, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(
             f,
             "SegmentStreamExec: num_partitions={:?}",
             self.target_partitions,
-        )
+        )?;
+        match t {
+            DisplayFormatType::Default | DisplayFormatType::TreeRender => Ok(()),
+            DisplayFormatType::Verbose => {
+                let s = &self.plan_summary;
+                write!(
+                    f,
+                    ", query_type={}, chunks={}, segments={}, bytes={}, \
+                     filters_pushed_down={}, filters_applied_client_side={}, \
+                     entity_path_narrowing={}",
+                    s.query_type,
+                    s.query_chunks,
+                    s.query_segments,
+                    re_format::format_bytes(s.query_bytes as f64),
+                    s.filters_pushed_down,
+                    s.filters_applied_client_side,
+                    s.entity_path_narrowing_applied,
+                )
+            }
+        }
     }
 }

@@ -1,6 +1,7 @@
 use crate::analytics::{QueryInfo, QueryType};
 use crate::batch_coalescer::coalesce_exec::SizedCoalesceBatchesExec;
 use crate::batch_coalescer::coalescer::CoalescerOptions;
+use crate::metrics_capture::QueryMetrics;
 use crate::pushdown_expressions::{apply_filter_expr_to_queries, filter_expr_is_supported};
 use ahash::{HashMap, HashMapExt as _, HashSet};
 use arrow::array::{
@@ -95,6 +96,13 @@ pub struct DataframeQueryTableProvider<T: DataframeClientAPI> {
 
     /// Per-connection analytics sender for query stats.
     analytics: Option<crate::ConnectionAnalytics>,
+
+    /// `query_metrics()` collectors that observed this provider at construction
+    /// time. The list is captured once — typically by reading the Python
+    /// `ContextVar` in `dataset_view.rs::reader()` — and travels with the
+    /// provider into every `SegmentStreamExec` it builds. Empty when no
+    /// `query_metrics()` scope was active.
+    metrics_collectors: Vec<crate::MetricsCollector>,
 }
 
 /// This trait provides the specific methods used when interacting with the
@@ -165,6 +173,7 @@ impl DataframeQueryTableProvider<ConnectionClient> {
         index_values: IndexValuesMap,
         arrow_schema: Option<Schema>,
         #[cfg(not(target_arch = "wasm32"))] trace_headers: Option<crate::TraceHeaders>,
+        metrics_collectors: Vec<crate::MetricsCollector>,
     ) -> ApiResult<Self> {
         let client = connection.client(origin.clone()).await?;
 
@@ -177,6 +186,7 @@ impl DataframeQueryTableProvider<ConnectionClient> {
             arrow_schema,
             #[cfg(not(target_arch = "wasm32"))]
             trace_headers,
+            metrics_collectors,
         )
         .await?;
 
@@ -225,6 +235,7 @@ impl<T: DataframeClientAPI> DataframeQueryTableProvider<T> {
         index_values: IndexValuesMap,
         arrow_schema: Option<Schema>,
         #[cfg(not(target_arch = "wasm32"))] trace_headers: Option<crate::TraceHeaders>,
+        metrics_collectors: Vec<crate::MetricsCollector>,
     ) -> ApiResult<Self> {
         // Either use the caller-provided schema or fetch it from the server.
         let (schema, trace_id) = if let Some(schema) = arrow_schema {
@@ -320,6 +331,7 @@ impl<T: DataframeClientAPI> DataframeQueryTableProvider<T> {
             #[cfg(not(target_arch = "wasm32"))]
             trace_headers,
             analytics: None,
+            metrics_collectors,
         })
     }
 
@@ -409,11 +421,17 @@ impl<T: DataframeClientAPI> TableProvider for DataframeQueryTableProvider<T> {
             let scan_start = Instant::now();
 
             let mut dataset_queries = vec![self.query_dataset_request.clone()];
+            let mut filters_pushed_down: usize = 0;
+            let mut filters_applied_client_side: usize = 0;
             for filter in filters {
-                if let Some(updated_queries) =
-                    apply_filter_expr_to_queries(dataset_queries.clone(), filter, &self.schema)?
-                {
-                    dataset_queries = updated_queries;
+                match apply_filter_expr_to_queries(dataset_queries.clone(), filter, &self.schema)? {
+                    Some(updated_queries) => {
+                        filters_pushed_down += 1;
+                        dataset_queries = updated_queries;
+                    }
+                    None => {
+                        filters_applied_client_side += 1;
+                    }
                 }
             }
 
@@ -422,6 +440,7 @@ impl<T: DataframeClientAPI> TableProvider for DataframeQueryTableProvider<T> {
             // and filters. Skip when fill_latest_at is enabled, because timestamps
             // from excluded entities would produce rows with filled values that the
             // user expects.
+            let mut entity_path_narrowing_applied = false;
             if self.query_expression.sparse_fill_strategy == SparseFillStrategy::None
                 && let Some(projected_paths) = projection.map(|projection| {
                     extract_projected_entity_paths(&self.schema, projection, filters)
@@ -430,9 +449,13 @@ impl<T: DataframeClientAPI> TableProvider for DataframeQueryTableProvider<T> {
             {
                 for query in &mut dataset_queries {
                     if !query.select_all_entity_paths && !query.entity_paths.is_empty() {
+                        let before = query.entity_paths.len();
                         query
                             .entity_paths
                             .retain(|path| projected_paths.contains(path));
+                        if query.entity_paths.len() != before {
+                            entity_path_narrowing_applied = true;
+                        }
                     }
                 }
             }
@@ -498,38 +521,53 @@ impl<T: DataframeClientAPI> TableProvider for DataframeQueryTableProvider<T> {
             }
             let chunk_info_batches = compute_unique_chunk_info_ids(chunk_info_batches)?;
 
-            // Begin per-connection analytics tracking.
-            // Fetch stats will be accumulated by the IO loops; the event is sent on drop.
-            let pending_analytics = self.analytics.as_ref().map(|analytics| {
-                let agg = chunk_info_batches
-                    .as_ref()
-                    .map(compute_chunk_info_aggregates)
-                    .unwrap_or_default();
+            // Build the planning-phase summary unconditionally — it feeds both the
+            // analytics span (when enabled) and the `MetricsSet` on the resulting
+            // `SegmentStreamExec` (always).
+            let agg = chunk_info_batches
+                .as_ref()
+                .map(compute_chunk_info_aggregates)
+                .unwrap_or_default();
+            let query_info = QueryInfo {
+                dataset_id: self.dataset_id.to_string(),
+                query_chunks: agg.chunks,
+                query_segments: agg.segments,
+                query_layers: agg.layers,
+                query_columns: self.schema.fields().len(),
+                query_entities: self.query_dataset_request.entity_paths.len(),
+                query_bytes: agg.bytes,
+                query_chunks_per_segment_min: agg.chunks_per_segment_min,
+                query_chunks_per_segment_max: agg.chunks_per_segment_max,
+                query_chunks_per_segment_mean: agg.chunks_per_segment_mean,
+                query_type: QueryType::classify(&self.query_expression),
+                primary_index_name: self
+                    .query_expression
+                    .filtered_index
+                    .map(|i| i.as_str().to_owned()),
+                time_to_first_chunk_info,
+                trace_id,
+                filters_pushed_down,
+                filters_applied_client_side,
+                entity_path_narrowing_applied,
+            };
 
-                analytics.begin_query(
-                    QueryInfo {
-                        dataset_id: self.dataset_id.to_string(),
-                        query_chunks: agg.chunks,
-                        query_segments: agg.segments,
-                        query_layers: agg.layers,
-                        query_columns: self.schema.fields().len(),
-                        query_entities: self.query_dataset_request.entity_paths.len(),
-                        query_bytes: agg.bytes,
-                        query_chunks_per_segment_min: agg.chunks_per_segment_min,
-                        query_chunks_per_segment_max: agg.chunks_per_segment_max,
-                        query_chunks_per_segment_mean: agg.chunks_per_segment_mean,
-                        query_type: QueryType::classify(&self.query_expression),
-                        primary_index_name: self
-                            .query_expression
-                            .filtered_index
-                            .map(|i| i.as_str().to_owned()),
-                        time_to_first_chunk_info,
-                        trace_id,
-                    },
-                    scan_start,
-                    scan_start_wall,
-                )
-            });
+            // Construct the plan's `QueryMetrics` here so it can be shared by
+            // both the analytics struct (for PostHog Drop-time span building)
+            // and `SegmentStreamExec` (for fetch counters + ad-hoc
+            // `EXPLAIN ANALYZE` MetricsSet). Single source of truth: there is
+            // no parallel `MetricsSet` accumulator.
+            let metrics = Arc::new(QueryMetrics::new(query_info));
+
+            // Begin analytics tracking. The PostHog OTLP send is gated by
+            // `self.analytics.is_some()`; the resulting struct is always
+            // returned so the `metrics_capture` subscribers and DataFusion
+            // `metrics()` see the same data.
+            let pending_analytics = crate::analytics::begin_query(
+                self.analytics.clone(),
+                Arc::clone(&metrics),
+                scan_start,
+                scan_start_wall,
+            );
 
             // Find the first column selection that is a component
             if query_expression.filtered_is_not_null.is_none() {
@@ -564,6 +602,8 @@ impl<T: DataframeClientAPI> TableProvider for DataframeQueryTableProvider<T> {
                 #[cfg(not(target_arch = "wasm32"))]
                 trace_id,
                 pending_analytics,
+                metrics,
+                self.metrics_collectors.clone(),
             )
             .map(Arc::new)
             .map(|exec| {
@@ -815,6 +855,35 @@ pub(crate) fn time_array_ref_to_i64(time_array: &ArrayRef) -> Result<Int64Array,
             ));
         }
     })
+}
+
+/// Compact, display-friendly snapshot of the plan-time decisions that drove a scan.
+///
+/// Surfaced via `DisplayAs::Verbose` on `SegmentStreamExec` so plain `EXPLAIN`
+/// (without `ANALYZE`) shows the most useful planning-phase decisions.
+#[derive(Debug, Clone)]
+pub(crate) struct PlanSummary {
+    pub query_type: &'static str,
+    pub query_chunks: usize,
+    pub query_segments: usize,
+    pub query_bytes: u64,
+    pub filters_pushed_down: usize,
+    pub filters_applied_client_side: usize,
+    pub entity_path_narrowing_applied: bool,
+}
+
+impl PlanSummary {
+    pub fn from_query_info(info: &crate::analytics::QueryInfo) -> Self {
+        Self {
+            query_type: info.query_type.as_str(),
+            query_chunks: info.query_chunks,
+            query_segments: info.query_segments,
+            query_bytes: info.query_bytes,
+            filters_pushed_down: info.filters_pushed_down,
+            filters_applied_client_side: info.filters_applied_client_side,
+            entity_path_narrowing_applied: info.entity_path_narrowing_applied,
+        }
+    }
 }
 
 /// Aggregates derived from the deduplicated chunk metadata returned by `query_dataset`.

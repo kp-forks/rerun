@@ -3,18 +3,20 @@ use std::collections::{BTreeMap, HashSet};
 use std::fmt::Debug;
 use std::pin::Pin;
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::task::{Context, Poll};
 
-use crate::analytics::{QueryErrorKind, TaskFetchStats};
+use crate::analytics::{QueryErrorKind, TaskFetchStats, build_metrics_set_for_explain};
 use crate::chunk_fetcher::{
     SortedChunksWithSegment, batch_byte_size, batch_byte_size_uncompressed,
     batch_has_any_direct_urls, fetch_batch_direct, fetch_batch_group_via_grpc,
     split_batch_by_direct_url,
 };
 use crate::dataframe_query_common::{
-    DEFAULT_BATCH_BYTES, DEFAULT_BATCH_ROWS, DataframeClientAPI, IndexValuesMap, force_grpc,
-    group_chunk_infos_by_segment_id, prepend_string_column_schema,
+    DEFAULT_BATCH_BYTES, DEFAULT_BATCH_ROWS, DataframeClientAPI, IndexValuesMap, PlanSummary,
+    force_grpc, group_chunk_infos_by_segment_id, prepend_string_column_schema,
 };
+use crate::metrics_capture::QueryMetrics;
 use crate::pipeline_budget::PipelineBudget;
 use arrow::array::{
     Array as _, ArrayRef, RecordBatch, RecordBatchOptions, StringArray, UInt64Array,
@@ -31,6 +33,7 @@ use datafusion::physical_expr::{
     EquivalenceProperties, LexOrdering, Partitioning, PhysicalExpr, PhysicalSortExpr,
 };
 use datafusion::physical_plan::execution_plan::{Boundedness, EmissionType};
+use datafusion::physical_plan::metrics::MetricsSet;
 use datafusion::physical_plan::{DisplayAs, DisplayFormatType, ExecutionPlan, PlanProperties};
 use futures::StreamExt as _;
 use futures_util::{FutureExt as _, Stream};
@@ -115,14 +118,40 @@ pub(crate) struct SegmentStreamExec<T: DataframeClientAPI> {
     /// This may or may not match request `trace_headers`.
     server_trace_id: Option<re_redap_client::TraceId>,
 
-    /// Pending query analytics — fetch stats are accumulated here.
-    /// The event is sent when the last clone is dropped.
-    pending_analytics: Option<crate::PendingQueryAnalytics>,
+    /// Pending query analytics — always present; the OTLP send on drop is
+    /// gated internally by whether the per-process telemetry stack is active.
+    pending_analytics: crate::PendingQueryAnalytics,
+
+    /// Subscribers (from `query_metrics()`) captured at plan-construction
+    /// time. Each receives a [`crate::QuerySnapshot`] when the last
+    /// per-partition stream completes — see [`DataframeSegmentStreamInner::maybe_emit_snapshot`].
+    captured_collectors: Vec<crate::MetricsCollector>,
+
+    /// Counts down to zero as per-partition streams complete; on the
+    /// zero-transition the metrics snapshot is built and pushed to
+    /// `captured_collectors`. Wrapped in an `Arc` so all streams + the plan
+    /// share the same counter.
+    partitions_remaining: Arc<AtomicUsize>,
+
+    /// Latched true the first time the snapshot is sent so cancellation /
+    /// late drop doesn't produce a duplicate.
+    snapshot_sent: Arc<AtomicBool>,
 
     /// Shared byte budget for end-to-end pipeline backpressure.
     /// Created once and shared across all partitions so the total memory
     /// usage is bounded by a single global budget.
     pipeline_budget: Arc<PipelineBudget>,
+
+    /// Per-query counters + embedded plan-time `QueryInfo`. Single source of
+    /// truth for fetch counters: each IO task flushes its `TaskFetchStats`
+    /// here, the snapshot path reads the atomics in `build_query_snapshot`,
+    /// and `ExecutionPlan::metrics()` builds an ad-hoc `MetricsSet` from
+    /// them on demand for `EXPLAIN ANALYZE`.
+    metrics: Arc<QueryMetrics>,
+
+    /// Plan-time summary used by `DisplayAs::Verbose` so that `EXPLAIN` (without
+    /// `ANALYZE`) also exposes the most useful planning-phase decisions.
+    plan_summary: PlanSummary,
 }
 
 use crate::chunk_fetcher::ChunksWithSegment;
@@ -153,7 +182,22 @@ pub struct DataframeSegmentStreamInner<T: DataframeClientAPI> {
     server_trace_id: Option<re_redap_client::TraceId>,
 
     /// Pending query analytics — keeps alive until stream completes.
-    pending_analytics: Option<crate::PendingQueryAnalytics>,
+    pending_analytics: crate::PendingQueryAnalytics,
+
+    /// Subscribers cloned from the parent `SegmentStreamExec`. On
+    /// end-of-stream the last partition to finish builds a
+    /// [`crate::QuerySnapshot`] and pushes it to each.
+    captured_collectors: Vec<crate::MetricsCollector>,
+
+    /// Shared partition countdown — see `SegmentStreamExec::partitions_remaining`.
+    partitions_remaining: Arc<AtomicUsize>,
+
+    /// Shared latch — see `SegmentStreamExec::snapshot_sent`.
+    snapshot_sent: Arc<AtomicBool>,
+
+    /// Shared metrics handle used by the snapshot path. Same `QueryMetrics`
+    /// as the parent plan; reading the atomics gives the final fetch counters.
+    metrics: Arc<QueryMetrics>,
 
     /// Shared byte budget for end-to-end pipeline backpressure.
     pipeline_budget: Arc<PipelineBudget>,
@@ -191,15 +235,11 @@ impl<T: DataframeClientAPI> Stream for DataframeSegmentStream<T> {
         {
             match cpu_join_result {
                 Err(err) => {
-                    if let Some(analytics) = &this.pending_analytics {
-                        analytics.record_error(QueryErrorKind::Decode);
-                    }
+                    this.pending_analytics.record_error(QueryErrorKind::Decode);
                     return Poll::Ready(Some(exec_err!("{err}")));
                 }
                 Ok(Err(err)) => {
-                    if let Some(analytics) = &this.pending_analytics {
-                        analytics.record_error(QueryErrorKind::Decode);
-                    }
+                    this.pending_analytics.record_error(QueryErrorKind::Decode);
                     return Poll::Ready(Some(Err(err
                         .with_trace_id(this.server_trace_id)
                         .into_df_error())));
@@ -216,18 +256,14 @@ impl<T: DataframeClientAPI> Stream for DataframeSegmentStream<T> {
         {
             match io_join_result {
                 Err(err) => {
-                    if let Some(analytics) = &this.pending_analytics {
-                        analytics.record_error(QueryErrorKind::Other);
-                    }
+                    this.pending_analytics.record_error(QueryErrorKind::Other);
                     return Poll::Ready(Some(exec_err!("{err}")));
                 }
                 Ok(Err(err)) => {
-                    if let Some(analytics) = &this.pending_analytics {
-                        // The IO task's own error-recording will have already set a
-                        // more specific kind (direct_fetch / grpc_fetch) via OnceLock,
-                        // so this call is a no-op fallback if that hasn't happened.
-                        analytics.record_error(QueryErrorKind::Other);
-                    }
+                    // The IO task's own error-recording will have already set a
+                    // more specific kind (direct_fetch / grpc_fetch) via OnceLock,
+                    // so this call is a no-op fallback if that hasn't happened.
+                    this.pending_analytics.record_error(QueryErrorKind::Other);
                     return Poll::Ready(Some(Err(err
                         .with_trace_id(this.server_trace_id)
                         .into_df_error())));
@@ -248,6 +284,7 @@ impl<T: DataframeClientAPI> Stream for DataframeSegmentStream<T> {
             let chunk_infos = this.chunk_infos.clone();
             let pending_analytics = this.pending_analytics.clone();
             let pipeline_budget = Arc::clone(&this.pipeline_budget);
+            let metrics = Arc::clone(&this.metrics);
 
             // Parent the IO pipeline under the original caller's trace via the
             // `attach_trace_context` guard above, not under whichever DataFusion
@@ -263,6 +300,7 @@ impl<T: DataframeClientAPI> Stream for DataframeSegmentStream<T> {
                             chunk_tx,
                             pending_analytics,
                             pipeline_budget,
+                            metrics,
                         )
                         .await
                     }
@@ -276,16 +314,19 @@ impl<T: DataframeClientAPI> Stream for DataframeSegmentStream<T> {
             .poll_recv(cx)
             .map(|result| Ok(result).transpose());
 
-        if matches!(&result, Poll::Ready(Some(Ok(_))))
-            && let Some(analytics) = &this.pending_analytics
-        {
-            // This could be the first time we return data that will
-            // actually be shown to the user.
-            // This is as close to the perceived latency as we're gonna come right now.
-            analytics.record_first_chunk();
+        if matches!(&result, Poll::Ready(Some(Ok(_)))) {
+            // This could be the first time we return data that will actually be
+            // shown to the user — as close to the perceived latency as we'll get.
+            // `record_first_chunk` is OnceLock-backed; subsequent calls are no-ops.
+            this.pending_analytics.record_first_chunk();
         }
 
         if matches!(&result, Poll::Ready(None)) {
+            // Eagerly produce a `QuerySnapshot` for `metrics_capture`
+            // subscribers when this is the last per-partition stream to
+            // finish — long before the FFI capsule on the Python side gets
+            // garbage-collected and triggers `PendingInner::Drop`.
+            this.maybe_emit_snapshot();
             this_outer.inner = None;
         }
 
@@ -299,6 +340,107 @@ impl<T: DataframeClientAPI> RecordBatchStream for DataframeSegmentStream<T> {
             .as_ref()
             .map(|inner| inner.projected_schema.clone())
             .unwrap_or_else(|| Schema::empty().into())
+    }
+}
+
+/// Build a [`crate::QuerySnapshot`] from the canonical sources and push it to
+/// each subscriber. Caller is responsible for the CAS on `snapshot_sent` —
+/// this function is the pure "actually build + send" step.
+fn build_and_push_snapshot(
+    captured_collectors: &[crate::MetricsCollector],
+    pending_analytics: &crate::PendingQueryAnalytics,
+    metrics: &QueryMetrics,
+) {
+    let snapshot = crate::metrics_capture::build_query_snapshot(
+        metrics,
+        pending_analytics.total_duration(),
+        pending_analytics.time_to_first_chunk(),
+        pending_analytics.error_kind(),
+        pending_analytics.direct_terminal_reason(),
+    );
+    crate::metrics_capture::push_snapshot(captured_collectors, &snapshot);
+}
+
+/// Decrement `partitions_remaining` and, on the transition to zero, latch
+/// `snapshot_sent` and emit a snapshot to each subscriber. Idempotent —
+/// the CAS on `snapshot_sent` guarantees at most one emission across all
+/// callers (`poll_next` end-of-stream, the empty-partition branch in
+/// `execute`, and concurrent cancellations).
+fn emit_snapshot_if_last_partition(
+    captured_collectors: &[crate::MetricsCollector],
+    partitions_remaining: &AtomicUsize,
+    snapshot_sent: &AtomicBool,
+    pending_analytics: &crate::PendingQueryAnalytics,
+    metrics: &QueryMetrics,
+) {
+    if captured_collectors.is_empty() {
+        // Fast path: no `query_metrics()` scope was active when this plan was
+        // built, so no snapshot will ever be emitted. The counter only exists
+        // to detect the zero-transition for that emission, so skip the RMW —
+        // it would just bounce the cache line across partitions for nothing.
+        return;
+    }
+
+    let prev = partitions_remaining.fetch_sub(1, Ordering::AcqRel);
+    if prev != 1 {
+        return; // not the last partition yet
+    }
+
+    if snapshot_sent
+        .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
+        .is_err()
+    {
+        return;
+    }
+
+    build_and_push_snapshot(captured_collectors, pending_analytics, metrics);
+}
+
+/// Cancellation/short-circuit fallback: if no other path has emitted yet,
+/// latch `snapshot_sent` and emit with whatever state has been recorded.
+/// Does NOT touch `partitions_remaining` (the normal end-of-stream path
+/// is responsible for that).
+fn emit_snapshot_drop_fallback(
+    captured_collectors: &[crate::MetricsCollector],
+    snapshot_sent: &AtomicBool,
+    pending_analytics: &crate::PendingQueryAnalytics,
+    metrics: &QueryMetrics,
+) {
+    if captured_collectors.is_empty() {
+        return;
+    }
+    if snapshot_sent
+        .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
+        .is_err()
+    {
+        return;
+    }
+    build_and_push_snapshot(captured_collectors, pending_analytics, metrics);
+}
+
+impl<T: DataframeClientAPI> DataframeSegmentStreamInner<T> {
+    /// See [`emit_snapshot_if_last_partition`].
+    fn maybe_emit_snapshot(&self) {
+        emit_snapshot_if_last_partition(
+            &self.captured_collectors,
+            &self.partitions_remaining,
+            &self.snapshot_sent,
+            &self.pending_analytics,
+            &self.metrics,
+        );
+    }
+}
+
+impl<T: DataframeClientAPI> Drop for DataframeSegmentStreamInner<T> {
+    fn drop(&mut self) {
+        // Cover the cancelled/short-circuited case — `poll_next` may already
+        // have called `maybe_emit_snapshot`, in which case the CAS no-ops.
+        emit_snapshot_drop_fallback(
+            &self.captured_collectors,
+            &self.snapshot_sent,
+            &self.pending_analytics,
+            &self.metrics,
+        );
     }
 }
 
@@ -316,7 +458,9 @@ impl<T: DataframeClientAPI> SegmentStreamExec<T> {
         limit_rows: Option<usize>,
         trace_headers: Option<crate::TraceHeaders>,
         server_trace_id: Option<re_redap_client::TraceId>,
-        pending_analytics: Option<crate::PendingQueryAnalytics>,
+        pending_analytics: crate::PendingQueryAnalytics,
+        metrics: Arc<QueryMetrics>,
+        captured_collectors: Vec<crate::MetricsCollector>,
     ) -> datafusion::common::Result<Self> {
         let projected_schema = match projection {
             Some(p) => Arc::new(table_schema.project(p)?),
@@ -412,6 +556,18 @@ impl<T: DataframeClientAPI> SegmentStreamExec<T> {
 
         let worker_runtime = Arc::new(CpuRuntime::try_new(num_partitions)?);
 
+        // `metrics` carries the plan-time `QueryInfo` (set by the caller in
+        // `dataframe_query_common::scan`) plus zero-initialized fetch atomics
+        // that the IO loop will populate.
+        let plan_summary = PlanSummary::from_query_info(&metrics.query_info);
+
+        // `captured_collectors` was sourced from the `DataframeQueryTableProvider`
+        // (which itself read the Python `query_metrics()` ContextVar at the
+        // `dataset_view.rs::reader()` boundary). It is empty when no scope
+        // was active.
+        let partitions_remaining = Arc::new(AtomicUsize::new(num_partitions));
+        let snapshot_sent = Arc::new(AtomicBool::new(false));
+
         Ok(Self {
             props,
             chunk_info,
@@ -426,6 +582,11 @@ impl<T: DataframeClientAPI> SegmentStreamExec<T> {
             server_trace_id,
             pending_analytics,
             pipeline_budget: Arc::new(PipelineBudget::new(total_uncompressed, num_partitions)),
+            metrics,
+            plan_summary,
+            captured_collectors,
+            partitions_remaining,
+            snapshot_sent,
         })
     }
 }
@@ -1064,8 +1225,9 @@ async fn chunk_stream_io_loop<T: DataframeClientAPI>(
     client: T,
     chunk_infos: Vec<RecordBatch>,
     output_channel: Sender<ApiResult<SortedChunksWithSegment>>,
-    pending_analytics: Option<crate::PendingQueryAnalytics>,
+    pending_analytics: crate::PendingQueryAnalytics,
     pipeline_budget: Arc<PipelineBudget>,
+    metrics: Arc<QueryMetrics>,
 ) -> ApiResult<()> {
     let target_size_bytes = TARGET_BATCH_SIZE_BYTES as u64;
 
@@ -1109,19 +1271,17 @@ async fn chunk_stream_io_loop<T: DataframeClientAPI>(
         )
         .await;
 
-        if let Some(analytics) = &pending_analytics {
-            match &result {
-                Ok(()) => {
-                    // All fetches were gRPC — record total bytes into a task-local
-                    // buffer and flush once. No intermediate atomics.
-                    let total_bytes: u64 = request_batches.iter().map(batch_byte_size).sum();
-                    let mut stats = TaskFetchStats::default();
-                    stats.record_grpc_fetch(total_bytes);
-                    stats.flush_into(analytics.fetch_stats());
-                }
-                Err(_) => {
-                    analytics.record_error(QueryErrorKind::GrpcFetch);
-                }
+        match &result {
+            Ok(()) => {
+                // All fetches were gRPC — record total bytes into a task-local
+                // buffer and flush once. No intermediate atomics.
+                let total_bytes: u64 = request_batches.iter().map(batch_byte_size).sum();
+                let mut stats = TaskFetchStats::default();
+                stats.record_grpc_fetch(total_bytes);
+                stats.flush_into(&metrics);
+            }
+            Err(_) => {
+                pending_analytics.record_error(QueryErrorKind::GrpcFetch);
             }
         }
 
@@ -1172,12 +1332,12 @@ async fn chunk_stream_io_loop<T: DataframeClientAPI>(
             let client = client.clone();
             let pending_analytics = pending_analytics.clone();
             let pipeline_budget = Arc::clone(&pipeline_budget);
+            let metrics = Arc::clone(&metrics);
             async move {
                 // Task-local stats buffer — flushed once to the shared atomics
                 // at the end of this task to avoid cross-core cache-line
                 // contention on the hot counters.
                 let mut stats = TaskFetchStats::default();
-                let pending_analytics = pending_analytics.as_ref();
 
                 let estimated = match &task {
                     FetchTask::Direct(b) | FetchTask::Grpc(b) => batch_byte_size_uncompressed(b)
@@ -1196,14 +1356,15 @@ async fn chunk_stream_io_loop<T: DataframeClientAPI>(
                             &batch,
                             &http_client,
                             &mut stats,
-                            pending_analytics,
+                            &pending_analytics,
                         )
                         .await
                         {
                             Ok(chunks) => chunks,
                             Err(err) => {
                                 stats.try_flush_into(
-                                    pending_analytics,
+                                    &pending_analytics,
+                                    &metrics,
                                     Err(QueryErrorKind::DirectFetch),
                                 );
                                 return Err(err);
@@ -1223,7 +1384,8 @@ async fn chunk_stream_io_loop<T: DataframeClientAPI>(
                                 Ok(chunks) => chunks,
                                 Err(err) => {
                                     stats.try_flush_into(
-                                        pending_analytics,
+                                        &pending_analytics,
+                                        &metrics,
                                         Err(QueryErrorKind::GrpcFetch),
                                     );
                                     return Err(err);
@@ -1234,7 +1396,7 @@ async fn chunk_stream_io_loop<T: DataframeClientAPI>(
                     }
                 };
 
-                stats.try_flush_into(pending_analytics, Ok(()));
+                stats.try_flush_into(&pending_analytics, &metrics, Ok(()));
                 let actual: usize = chunks
                     .iter()
                     .flat_map(|seg| {
@@ -1366,6 +1528,16 @@ impl<T: DataframeClientAPI> ExecutionPlan for SegmentStreamExec<T> {
 
         // if no chunks match this datafusion partition, return an empty stream
         if chunk_infos.is_empty() {
+            // The partition still counts toward `partitions_remaining` —
+            // decrement it (and possibly emit the snapshot) here, since the
+            // empty stream's `poll_next` never gets the chance.
+            emit_snapshot_if_last_partition(
+                &self.captured_collectors,
+                &self.partitions_remaining,
+                &self.snapshot_sent,
+                &self.pending_analytics,
+                &self.metrics,
+            );
             let stream: DataframeSegmentStream<T> = DataframeSegmentStream { inner: None };
             return Ok(Box::pin(stream));
         }
@@ -1404,12 +1576,27 @@ impl<T: DataframeClientAPI> ExecutionPlan for SegmentStreamExec<T> {
             server_trace_id: self.server_trace_id,
             pending_analytics: self.pending_analytics.clone(),
             pipeline_budget,
+            captured_collectors: self.captured_collectors.clone(),
+            partitions_remaining: Arc::clone(&self.partitions_remaining),
+            snapshot_sent: Arc::clone(&self.snapshot_sent),
+            metrics: Arc::clone(&self.metrics),
         };
         let stream = DataframeSegmentStream {
             inner: Some(stream),
         };
 
         Ok(Box::pin(stream))
+    }
+
+    fn metrics(&self) -> Option<MetricsSet> {
+        // Build the `MetricsSet` on demand from our flat `QueryMetrics` —
+        // see `build_metrics_set_for_explain` for why we don't hold a
+        // `MetricsSet` as the source of truth.
+        Some(build_metrics_set_for_explain(
+            &self.metrics,
+            self.target_partitions,
+            self.pending_analytics.time_to_first_chunk(),
+        ))
     }
 
     fn repartitioned(
@@ -1435,6 +1622,19 @@ impl<T: DataframeClientAPI> ExecutionPlan for SegmentStreamExec<T> {
             server_trace_id: self.server_trace_id,
             pending_analytics: self.pending_analytics.clone(),
             pipeline_budget: Arc::clone(&self.pipeline_budget),
+            // Share the same `QueryMetrics` atomics across the original and
+            // repartitioned plans so any in-flight writes are still observed
+            // by the original `PendingInner::drop` snapshot path.
+            metrics: Arc::clone(&self.metrics),
+            plan_summary: self.plan_summary.clone(),
+            captured_collectors: self.captured_collectors.clone(),
+            // Reset the partition counter for the repartitioned plan — it
+            // owns its own per-partition stream lifetimes.
+            partitions_remaining: Arc::new(AtomicUsize::new(target_partitions)),
+            // Repartitioning yields a fresh plan; the snapshot latch is
+            // shared so the original plan's `Drop`-path emission still
+            // dedupes against the new one.
+            snapshot_sent: Arc::clone(&self.snapshot_sent),
         };
 
         plan.props.partitioning = match plan.props.partitioning {
@@ -1450,12 +1650,31 @@ impl<T: DataframeClientAPI> ExecutionPlan for SegmentStreamExec<T> {
 }
 
 impl<T: DataframeClientAPI> DisplayAs for SegmentStreamExec<T> {
-    fn fmt_as(&self, _t: DisplayFormatType, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt_as(&self, t: DisplayFormatType, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(
             f,
             "SegmentStreamExec: num_partitions={:?}",
             self.target_partitions,
-        )
+        )?;
+        match t {
+            DisplayFormatType::Default | DisplayFormatType::TreeRender => Ok(()),
+            DisplayFormatType::Verbose => {
+                let s = &self.plan_summary;
+                write!(
+                    f,
+                    ", query_type={}, chunks={}, segments={}, bytes={}, \
+                     filters_pushed_down={}, filters_applied_client_side={}, \
+                     entity_path_narrowing={}",
+                    s.query_type,
+                    s.query_chunks,
+                    s.query_segments,
+                    re_format::format_bytes(s.query_bytes as _),
+                    s.filters_pushed_down,
+                    s.filters_applied_client_side,
+                    s.entity_path_narrowing_applied,
+                )
+            }
+        }
     }
 }
 

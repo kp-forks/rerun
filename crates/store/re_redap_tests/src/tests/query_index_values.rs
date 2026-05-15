@@ -804,8 +804,9 @@ async fn query_dataset_snapshot<T: RerunCloudService>(
         &query,
         &[] as &[&str],
         Some(Arc::new(index_values)),
-        None, // arrow_schema — let the provider fetch it
-        None, // trace_headers
+        None,       // arrow_schema — let the provider fetch it
+        None,       // trace_headers
+        Vec::new(), // metrics_collectors
     )
     .await
     .unwrap();
