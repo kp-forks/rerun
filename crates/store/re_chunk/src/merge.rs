@@ -23,7 +23,7 @@ impl Chunk {
             right.concatenated(left)?
         };
 
-        compacted.sort_if_unsorted();
+        compacted.sort_by_row_ids_if_needed();
 
         // Sanity check that timelines haven't become unsorted.
         // If they have, we have an unsorted timeline, which is good to know about.
@@ -36,7 +36,7 @@ impl Chunk {
                 if left_was_sorted && right_was_sorted {
                     let entity_path = compacted.entity_path();
                     re_log::debug_warn_once!(
-                        "Timeline '{name}' became unsorted after concatenation for entity '{entity_path}'. This may cause performance issues."
+                        "Timeline '{name}' BECAME unsorted after concatenating overlapping, sorted chunks for entity '{entity_path}'. This may cause performance issues."
                     );
                 }
             }
@@ -489,8 +489,8 @@ mod tests {
                 ),
             );
 
-            assert!(got.is_sorted());
-            assert!(got.is_time_sorted());
+            assert!(got.is_row_ids_sorted());
+            assert!(got.all_timelines_sorted());
         }
         {
             assert!(chunk2.concatenable(&chunk1));
@@ -559,8 +559,8 @@ mod tests {
                 ),
             );
 
-            assert!(!got.is_sorted());
-            assert!(!got.is_time_sorted());
+            assert!(!got.is_row_ids_sorted());
+            assert!(!got.all_timelines_sorted());
         }
 
         Ok(())
@@ -722,8 +722,8 @@ mod tests {
                 ),
             );
 
-            assert!(got.is_sorted());
-            assert!(got.is_time_sorted());
+            assert!(got.is_row_ids_sorted());
+            assert!(got.all_timelines_sorted());
         }
         {
             assert!(chunk2.concatenable(&chunk1));
@@ -792,8 +792,8 @@ mod tests {
                 ),
             );
 
-            assert!(!got.is_sorted());
-            assert!(!got.is_time_sorted());
+            assert!(!got.is_row_ids_sorted());
+            assert!(!got.all_timelines_sorted());
         }
 
         Ok(())

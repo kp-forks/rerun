@@ -591,12 +591,12 @@ fn log_chunk_size_stats(
     let mut max_rows_seen = 0usize;
     let mut total_rows = 0u64;
     let mut num_chunks = 0u64;
-    let mut num_unsorted = 0u64;
+    let mut num_unordered = 0u64;
 
     // Capped-chunk stats: chunks that hit a row-count limit during compaction.
     // The "rest" are chunks that converged below the limits, and are the most
     // interesting input for tuning chunk-size targets.
-    let mut num_unsorted_at_limit = 0u64;
+    let mut num_unordered_at_limit = 0u64;
     let mut num_sorted_at_max_rows = 0u64;
     let mut rest_num_chunks = 0u64;
     let mut rest_total_bytes = 0u64;
@@ -606,7 +606,7 @@ fn log_chunk_size_stats(
         for chunk in db.storage_engine().store().iter_physical_chunks() {
             let size = chunk.heap_size_bytes();
             let rows = chunk.num_rows();
-            let is_sorted = chunk.is_time_sorted();
+            let all_timelines_sorted = chunk.all_timelines_sorted();
 
             min_bytes = min_bytes.min(size);
             max_bytes = max_bytes.max(size);
@@ -614,14 +614,14 @@ fn log_chunk_size_stats(
             min_rows = min_rows.min(rows);
             max_rows_seen = max_rows_seen.max(rows);
             total_rows += rows as u64;
-            if !is_sorted {
-                num_unsorted += 1;
+            if !all_timelines_sorted {
+                num_unordered += 1;
             }
             num_chunks += 1;
 
-            if !is_sorted && rows == max_rows_if_unsorted_limit {
-                num_unsorted_at_limit += 1;
-            } else if is_sorted && rows == max_rows_limit {
+            if !all_timelines_sorted && rows == max_rows_if_unsorted_limit {
+                num_unordered_at_limit += 1;
+            } else if all_timelines_sorted && rows == max_rows_limit {
                 num_sorted_at_max_rows += 1;
             } else {
                 rest_num_chunks += 1;
@@ -637,7 +637,7 @@ fn log_chunk_size_stats(
 
     let avg_bytes = total_bytes / num_chunks;
     let avg_rows = total_rows / num_chunks;
-    let unsorted_pct = num_unsorted as f64 / num_chunks as f64 * 100.0;
+    let unordered_pct = num_unordered as f64 / num_chunks as f64 * 100.0;
 
     let rest_avg_bytes_str = if rest_num_chunks == 0 {
         "N/A".to_owned()
@@ -659,8 +659,8 @@ fn log_chunk_size_stats(
         rows_min = min_rows,
         rows_max = max_rows_seen,
         rows_avg = avg_rows,
-        unsorted_chunks = format!("{num_unsorted}/{num_chunks} ({unsorted_pct:.1}%)"),
-        unsorted_at_limit = format!("{num_unsorted_at_limit} (rows == max_rows_if_unsorted = {max_rows_if_unsorted_limit})"),
+        unordered_chunks = format!("{num_unordered}/{num_chunks} ({unordered_pct:.1}%)"),
+        unordered_at_limit = format!("{num_unordered_at_limit} (rows == max_rows_if_unsorted = {max_rows_if_unsorted_limit})"),
         sorted_at_max_rows = format!("{num_sorted_at_max_rows} (rows == max_rows = {max_rows_limit})"),
         rest_num_chunks,
         rest_avg_bytes = %rest_avg_bytes_str,

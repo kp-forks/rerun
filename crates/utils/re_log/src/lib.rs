@@ -293,6 +293,20 @@ pub fn env_var_is_truthy(var_name: &str) -> bool {
         .unwrap_or(false)
 }
 
+/// Is `RERUN_VERY_STRICT` set to a truthy value?
+///
+/// In very strict mode, Rerun may panic anywhere, at any time, for any reason whenever it
+/// detects something it does not like — e.g. out-of-order chunks, unsorted timelines,
+/// or other invariant violations. Very strict mode is meant for development, testing and
+/// CI, never for production: enable it to catch silent corruption early.
+///
+/// The result is cached on the first call, so subsequent calls are very cheap and
+/// changing the environment variable at runtime has no effect.
+pub fn is_rerun_very_strict() -> bool {
+    static VERY_STRICT: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    *VERY_STRICT.get_or_init(|| env_var_is_truthy("RERUN_VERY_STRICT"))
+}
+
 /// Shorten a path to a Rust source file.
 ///
 /// Example input:

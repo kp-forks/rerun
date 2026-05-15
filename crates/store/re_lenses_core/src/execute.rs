@@ -413,7 +413,7 @@ pub fn execute<'a>(
                 match Chunk::new(
                     ChunkId::new(),
                     entity_path.clone(),
-                    Some(chunk.is_sorted()),
+                    Some(chunk.is_row_ids_sorted()),
                     chunk.row_ids_array().clone(),
                     timelines.clone(),
                     components,

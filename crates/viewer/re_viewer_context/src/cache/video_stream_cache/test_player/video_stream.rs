@@ -371,7 +371,7 @@ fn cache_with_unordered_chunks() {
 
             let mut chunk = builder.build().unwrap();
 
-            chunk.sort_if_unsorted();
+            chunk.sort_by_row_ids_if_needed();
 
             chunk
         })

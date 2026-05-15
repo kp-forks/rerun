@@ -399,7 +399,11 @@ impl MessageDecoderRunner {
             let mut batch = Vec::new();
             for mut chunk in decoder.finish() {
                 if let Ok(chunk) = &mut chunk {
-                    chunk.sort_if_unsorted();
+                    chunk.sort_by_row_ids_if_needed();
+
+                    // If we hit this warning, we may be producing unnecessarily slow .rrd files.
+                    // See RR-4658 for details.
+                    chunk.warn_if_out_of_order();
                 }
 
                 match chunk {

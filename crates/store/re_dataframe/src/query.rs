@@ -868,7 +868,7 @@ impl<E: StorageEngineLike> QueryHandle<E> {
                             if let Some(index) = filtered_index {
                                 chunk.is_timeline_sorted(index)
                             } else {
-                                chunk.is_sorted()
+                                chunk.is_row_ids_sorted()
                             },
                             "the query cache should have already taken care of sorting (and densifying!) the chunk",
                         );

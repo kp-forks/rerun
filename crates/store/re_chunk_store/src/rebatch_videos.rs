@@ -443,7 +443,7 @@ fn chunk_from_gop(
     }
 
     let mut chunk = result.ok_or_else(|| anyhow::anyhow!("GoP group is empty — this is a bug"))?;
-    chunk.sort_if_unsorted();
+    chunk.sort_by_row_ids_if_needed();
     Ok(chunk)
 }
 

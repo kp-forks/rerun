@@ -362,6 +362,7 @@ Manipulate the contents of .mcap files.
 **Commands**
 
 * `convert`: Convert an .mcap file to an .rrd.
+* `info`: Print timeline / sortedness diagnostics for an .mcap file.
 
 ## rerun mcap convert
 
@@ -420,6 +421,26 @@ Convert an .mcap file to an .rrd.
 > Exclude topics matching this regex (RE2 syntax). Repeatable.
 >
 > Applied after includes: a topic is kept only if it matches an include (or no includes are set) AND matches no exclude.
+
+## rerun mcap info
+
+Print timeline / sortedness diagnostics for an .mcap file.
+
+**Usage**: `rerun mcap info [OPTIONS] <PATH>`
+
+**Arguments**
+
+* `<PATH>`
+> Path to the .mcap file to inspect.
+
+**Options**
+
+* `--full <FULL>`
+> Run the full `re_mcap` decoder pipeline.
+>
+> Surfaces timelines added by per-message decoders (e.g. `ros2_timestamp` from a ROS 2 `Header.stamp`). Without this flag only the raw MCAP-level timelines `message_log_time` / `message_publish_time` are inspected.
+>
+> [Default: `false`]
 
 ## rerun rrd
 

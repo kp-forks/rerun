@@ -799,7 +799,7 @@ impl Chunk {
 
         let row_ids = self.row_ids().collect_vec();
 
-        if self.is_sorted() {
+        if self.is_row_ids_sorted() {
             self.components
                 .iter()
                 .filter_map(|(component, column)| {
@@ -913,7 +913,7 @@ impl Chunk {
             components,
         };
 
-        chunk.is_sorted = is_sorted.unwrap_or_else(|| chunk.is_sorted_uncached());
+        chunk.is_sorted = is_sorted.unwrap_or_else(|| chunk.is_row_ids_sorted_uncached());
 
         chunk.sanity_check()?;
 
@@ -1408,7 +1408,7 @@ impl Chunk {
     /// a linear scan otherwise.
     #[inline]
     pub fn row_index_of(&self, row_id: RowId) -> Option<usize> {
-        if self.is_sorted() {
+        if self.is_row_ids_sorted() {
             self.row_ids_slice().binary_search(&row_id).ok()
         } else {
             self.row_ids_slice().iter().position(|r| *r == row_id)
@@ -1455,7 +1455,7 @@ impl Chunk {
         let row_ids = self.row_ids_slice();
 
         #[expect(clippy::unwrap_used)] // checked above
-        Some(if self.is_sorted() {
+        Some(if self.is_row_ids_sorted() {
             (
                 row_ids.first().copied().unwrap(),
                 row_ids.last().copied().unwrap(),
@@ -1729,6 +1729,44 @@ impl re_byte_size::SizeBytes for TimeColumn {
 // --- Sanity checks ---
 
 impl Chunk {
+    /// Warn if we find out-of-order timelines.
+    ///
+    /// If `RERUN_VERY_STRICT` is set, this will instead panic.
+    ///
+    /// This assumes the chunk is already sorted by `RowId`, like most chunks.
+    ///
+    /// Out-of-order timelines are sometimes unavoidable,
+    /// but if we can avoid them we absolutely should,
+    /// because they cause much slower queries
+    #[track_caller]
+    pub fn warn_if_out_of_order(&self) {
+        if !self.is_row_ids_sorted() {
+            // Big problem!
+            if re_log::is_rerun_very_strict() {
+                panic!("Found chunk that wasn't sorted by RowId. This is a bug");
+            } else {
+                re_log::debug_warn_once!("Found chunk that wasn't sorted by RowId. This is a bug");
+            }
+        }
+
+        let unsorted_timelines = self.unsorted_timelines();
+        if !unsorted_timelines.is_empty() {
+            if re_log::is_rerun_very_strict() {
+                panic!(
+                    "Found out-of-order timelines for entity '{}': {:?}. Out-of-order timelines are sometimes unavoidable, but they may cause performance problems",
+                    self.entity_path,
+                    self.unsorted_timelines()
+                );
+            } else {
+                re_log::debug_warn_once!(
+                    "Found out-of-order timelines for entity '{}': {:?}. Out-of-order timelines are sometimes unavoidable, but they may cause performance problems",
+                    self.entity_path,
+                    self.unsorted_timelines()
+                );
+            }
+        }
+    }
+
     /// Returns an error if the Chunk's invariants are not upheld.
     ///
     /// Costly checks are only run in debug builds.
@@ -1745,6 +1783,8 @@ impl Chunk {
             timelines,
             components,
         } = self;
+
+        self.warn_if_out_of_order();
 
         if cfg!(debug_assertions) {
             let measured = self.heap_size_bytes_inner();
@@ -1775,7 +1815,7 @@ impl Chunk {
 
             #[expect(clippy::collapsible_if)] // readability
             if cfg!(debug_assertions) {
-                if *is_sorted != self.is_sorted_uncached() {
+                if *is_sorted != self.is_row_ids_sorted_uncached() {
                     return Err(ChunkError::Malformed {
                         reason: format!(
                             "Chunk is marked as {}sorted but isn't: {row_ids:?}",

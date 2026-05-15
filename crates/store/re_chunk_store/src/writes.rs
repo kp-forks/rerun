@@ -234,18 +234,11 @@ impl ChunkStore {
             return Ok(all_diffs);
         }
 
-        if !chunk.is_sorted() {
+        if !chunk.is_row_ids_sorted() {
             return Err(ChunkStoreError::UnsortedChunk);
         }
 
-        for (timeline, time_column) in chunk.timelines() {
-            if !time_column.is_sorted() {
-                let entity_path = chunk.entity_path();
-                re_log::debug_warn_once!(
-                    "Found chunk for entity '{entity_path}' where timeline '{timeline}' was unsorted (compared to RowId). This may cause performance issues."
-                );
-            }
-        }
+        chunk.warn_if_out_of_order();
 
         re_tracing::profile_function!();
 
@@ -769,7 +762,7 @@ impl ChunkStore {
             let is_below_bytes_threshold = total_bytes <= chunk_max_bytes;
 
             let total_rows = (chunk.num_rows()) as u64;
-            let is_below_rows_threshold = if chunk.is_time_sorted() {
+            let is_below_rows_threshold = if chunk.all_timelines_sorted() {
                 total_rows <= chunk_max_rows
             } else {
                 total_rows <= chunk_max_rows_if_unsorted
@@ -817,7 +810,7 @@ impl ChunkStore {
                                 let is_below_bytes_threshold = total_bytes <= chunk_max_bytes;
 
                                 let total_rows = (chunk.num_rows() + candidate.num_rows()) as u64;
-                                let is_below_rows_threshold = if candidate.is_time_sorted() {
+                                let is_below_rows_threshold = if candidate.all_timelines_sorted() {
                                     total_rows <= chunk_max_rows
                                 } else {
                                     total_rows <= chunk_max_rows_if_unsorted
